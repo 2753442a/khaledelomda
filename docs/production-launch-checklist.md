@@ -9,7 +9,7 @@
 | Migration ledger and backup | NOT TESTED | No database connection or migration ledger was used in this run. |
 | Pending rows with a null hold | NOT CHECKED | Count and inspect them with the owner; never bulk-expire automatically. |
 | Local build/typecheck | PASS | `npm run typecheck`, `npm run build`, and `git diff --check` pass. SQL and Supabase behavior remain untested. |
-| Pages deployment | BLOCKED | GitHub repo `2753442a/khaledelomda` now has the reviewed source on `main` and Cloudflare Pages is connected to it. Automatic deployments are paused; no deployment record exists yet. Resume/trigger a build and verify `khaledelomda.pages.dev`. |
+| Pages deployment | BLOCKED | GitHub repo `2753442a/khaledelomda` now has the reviewed source on `main` and Cloudflare Pages is connected to it. Automatic production deployments are enabled; the next commit will trigger the first build. Verify `khaledelomda.pages.dev`. |
 | Production authorization | BLOCKED | Owner requested a Pages deployment attempt, but the database target/environment and public domain are not confirmed. A Pages preview deployment does not authorize a production release or applying migrations. |
 
 ## 1. Confirm Ownership And Scope
