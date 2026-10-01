@@ -9,7 +9,7 @@
 | Migration ledger and backup | NOT TESTED | No database connection or migration ledger was used in this run. |
 | Pending rows with a null hold | NOT CHECKED | Count and inspect them with the owner; never bulk-expire automatically. |
 | Local build/typecheck | PASS | `npm run typecheck`, `npm run build`, and `git diff --check` pass. SQL and Supabase behavior remain untested. |
-| Pages deployment | BLOCKED | GitHub repo `2753442a/khaledelomda` now has the reviewed source on `main` and Cloudflare Pages is connected to it. Automatic production deployments are enabled; the next commit will trigger the first build. Verify `khaledelomda.pages.dev`. |
+| Pages deployment | PASS | The first build succeeded from GitHub `main` commit `b722d13`; the demo site is live at `https://khaledelomda.pages.dev`. Automatic production deployments are enabled. Verify Auth redirects, custom domain/DNS, and rollback before operational release. |
 | Production authorization | BLOCKED | Owner requested a Pages deployment attempt, but the database target/environment and public domain are not confirmed. A Pages preview deployment does not authorize a production release or applying migrations. |
 
 ## 1. Confirm Ownership And Scope
@@ -86,7 +86,7 @@ order by created_at;
 - [ ] Run `./node_modules/.bin/tsc --noEmit` and `./node_modules/.bin/tsc -b && ./node_modules/.bin/vite build`.
 - [ ] Run customer/owner end-to-end tests on desktop and phone-sized screens against Staging.
 - [ ] Verify production browser settings, CORS origins, Auth redirects, and Edge Function secrets through the relevant provider consoles. Never place service-role or payment secrets in `VITE_*` variables.
-- [ ] Resume Cloudflare Pages automatic deployments or trigger the reviewed `main` branch build, then verify the build command `npm run build`, output directory `dist`, `khaledelomda.pages.dev`, any custom domain/DNS, and rollback procedure.
+- [ ] Verify the live Pages build command `npm run build`, output directory `dist`, `khaledelomda.pages.dev`, any custom domain/DNS, and rollback procedure before operational release.
 - [ ] Confirm repository access, default branch, CI checks, deployment permissions, and commit author before further Git changes.
 - [ ] If releasing Android, provide a compatible release keystore, configure signing outside the repository, build a signed release, and test on a physical device.
 - [ ] Confirm analytics, privacy disclosure, backups, monitoring, error reporting, incident contact, and recovery procedure.
