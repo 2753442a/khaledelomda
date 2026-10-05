@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import {
-  formatArabicDate, formatCurrency, formatShortDate,
-  generateWhatsAppLink, STATUS_LABELS, STATUS_CLASSES
+  formatArabicDate, formatCurrency, formatShortDate, formatTime,
+  generateWhatsAppLink
 } from '../lib/utils'
 import {
   BarChart3, CalendarCheck, Clock, Settings, Users, Loader2,
   Check, X, MessageCircle, Trash2, RefreshCw, Plus, Edit3,
   AlertTriangle, Shield, ChevronRight, ChevronLeft, Home,
-  CheckCircle2, XCircle, Banknote, Eye
+  CheckCircle2, XCircle, Banknote, Eye, Info, Phone, Calendar,
+  CreditCard, Search, Filter, AlertCircle, FileText, CheckCircle
 } from 'lucide-react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval,
   getDay, addMonths, subMonths, parseISO, isSameDay } from 'date-fns'
@@ -19,6 +20,16 @@ import { ar } from 'date-fns/locale'
 // ─────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────
+interface BookingAddon {
+  id: string
+  quantity: number
+  unit_price: number
+  addons?: {
+    name: string
+    icon: string
+  }
+}
+
 interface Booking {
   id: string
   property_id: string
@@ -34,8 +45,10 @@ interface Booking {
   payment_receipt_url: string | null
   status: string
   cancellation_reason: string | null
+  cancelled_at?: string | null
   created_at: string
   properties?: { name: string }
+  booking_addons?: BookingAddon[]
 }
 
 interface Settings {
@@ -72,6 +85,56 @@ interface Addon {
 }
 
 // ─────────────────────────────────────────────
+// STATUS BADGES & CONFIG
+// ─────────────────────────────────────────────
+export const STATUS_CONFIG: Record<string, { label: string; badgeClass: string; dotColor: string }> = {
+  pending_receipt: {
+    label: 'بانتظار الإيصال',
+    badgeClass: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
+    dotColor: 'bg-amber-400'
+  },
+  pending_verification: {
+    label: 'بانتظار المراجعة',
+    badgeClass: 'bg-blue-500/15 text-blue-400 border border-blue-500/30',
+    dotColor: 'bg-blue-400'
+  },
+  confirmed: {
+    label: 'مؤكد',
+    badgeClass: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
+    dotColor: 'bg-emerald-400'
+  },
+  cancelled: {
+    label: 'ملغي',
+    badgeClass: 'bg-red-500/15 text-red-400 border border-red-500/30',
+    dotColor: 'bg-red-400'
+  },
+  completed: {
+    label: 'مكتمل',
+    badgeClass: 'bg-slate-500/15 text-slate-300 border border-slate-500/30',
+    dotColor: 'bg-slate-400'
+  },
+  expired: {
+    label: 'منتهي',
+    badgeClass: 'bg-gray-500/15 text-gray-400 border border-gray-500/30',
+    dotColor: 'bg-gray-400'
+  }
+}
+
+export const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
+  const conf = STATUS_CONFIG[status] || {
+    label: status,
+    badgeClass: 'bg-gray-500/15 text-gray-300 border border-gray-500/30',
+    dotColor: 'bg-gray-400'
+  }
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${conf.badgeClass}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${conf.dotColor}`} />
+      {conf.label}
+    </span>
+  )
+}
+
+// ─────────────────────────────────────────────
 // METRICS CARD
 // ─────────────────────────────────────────────
 const MetricCard: React.FC<{ icon: React.ReactNode; label: string; value: string | number; sub?: string; color?: string }> = ({
@@ -90,7 +153,9 @@ const MetricCard: React.FC<{ icon: React.ReactNode; label: string; value: string
 // ─────────────────────────────────────────────
 // ADMIN CALENDAR
 // ─────────────────────────────────────────────
-const AdminCalendar: React.FC<{ bookings: Booking[]; properties: Property[] }> = ({ bookings, properties }) => {
+const AdminCalendar: React.FC<{ bookings: Booking[]; properties: Property[]; onSelectBooking: (b: Booking) => void }> = ({
+  bookings, onSelectBooking
+}) => {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const days = eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) })
   const rawFirstDay = getDay(startOfMonth(currentMonth))
@@ -130,21 +195,31 @@ const AdminCalendar: React.FC<{ bookings: Booking[]; properties: Property[] }> =
 
           return (
             <div key={format(day, 'yyyy-MM-dd')} className={`
-              relative min-h-[52px] rounded-lg p-1 text-center border transition-all cursor-pointer hover:bg-white/5
-              ${hasConfirmed ? 'border-red-500/40 bg-red-500/10' :
+              relative min-h-[56px] rounded-lg p-1 text-center border transition-all hover:bg-white/5
+              ${hasConfirmed ? 'border-emerald-500/40 bg-emerald-500/10' :
                 hasPending ? 'border-amber-500/40 bg-amber-500/10' :
                 'border-transparent'}
             `}>
-              <span className={`text-sm font-medium ${hasConfirmed ? 'text-red-400' : hasPending ? 'text-amber-400' : 'text-gray-400'}`}>
+              <span className={`text-sm font-medium ${hasConfirmed ? 'text-emerald-400' : hasPending ? 'text-amber-400' : 'text-gray-400'}`}>
                 {format(day, 'd')}
               </span>
-              {dayBookings.slice(0, 2).map((b, i) => (
-                <div key={b.id} className={`text-[9px] truncate px-0.5 rounded mt-0.5 leading-tight ${STATUS_CLASSES[b.status]}`}>
+              {dayBookings.slice(0, 2).map((b) => (
+                <div
+                  key={b.id}
+                  onClick={() => onSelectBooking(b)}
+                  className={`text-[9px] truncate px-1 py-0.5 rounded mt-0.5 leading-tight cursor-pointer font-medium hover:scale-105 transition-transform ${
+                    b.status === 'confirmed' ? 'bg-emerald-500/30 text-emerald-300' :
+                    b.status === 'pending_verification' ? 'bg-blue-500/30 text-blue-300' :
+                    b.status === 'pending_receipt' ? 'bg-amber-500/30 text-amber-300' :
+                    'bg-white/10 text-gray-400'
+                  }`}
+                  title={`${b.customer_name} (${b.properties?.name ?? 'استراحة'})`}
+                >
                   {b.customer_name.split(' ')[0]}
                 </div>
               ))}
               {dayBookings.length > 2 && (
-                <div className="text-[9px] text-gray-600">+{dayBookings.length - 2}</div>
+                <div className="text-[9px] text-gray-500">+{dayBookings.length - 2}</div>
               )}
             </div>
           )
@@ -155,11 +230,15 @@ const AdminCalendar: React.FC<{ bookings: Booking[]; properties: Property[] }> =
 }
 
 // ─────────────────────────────────────────────
-// PENDING VERIFICATION CARD
+// ACTIONABLE BOOKING CARD (PENDING TAB)
 // ─────────────────────────────────────────────
-const PendingCard: React.FC<{ booking: Booking; onVerify: (id: string, approved: boolean) => void; loading: boolean }> = ({
-  booking, onVerify, loading
-}) => {
+const ActionableBookingCard: React.FC<{
+  booking: Booking
+  onConfirm: (booking: Booking) => void
+  onCancel: (booking: Booking) => void
+  onOpenDetails: (booking: Booking) => void
+  loading: boolean
+}> = ({ booking, onConfirm, onCancel, onOpenDetails, loading }) => {
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null)
   const [showReceipt, setShowReceipt] = useState(false)
 
@@ -172,73 +251,497 @@ const PendingCard: React.FC<{ booking: Booking; onVerify: (id: string, approved:
     fetchUrl()
   }, [booking.payment_receipt_url])
 
+  const isPendingReceipt = booking.status === 'pending_receipt'
+
   return (
-    <div className="card p-4 border border-amber-500/20 animate-fade-in-up">
+    <div className={`card p-5 border transition-all animate-fade-in-up ${
+      isPendingReceipt ? 'border-amber-500/30 bg-amber-500/[0.02]' : 'border-blue-500/30 bg-blue-500/[0.02]'
+    }`}>
       <div className="flex items-start justify-between mb-3">
         <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <h4 className="font-bold text-white">{booking.customer_name}</h4>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CLASSES[booking.status]}`}>
-              {STATUS_LABELS[booking.status]}
-            </span>
+          <div className="flex items-center gap-2 mb-1">
+            <h4 className="font-bold text-white text-base">{booking.customer_name}</h4>
+            <StatusBadge status={booking.status} />
           </div>
-          <p className="text-sm text-gray-400">{booking.customer_phone}</p>
+          <p className="text-sm text-gray-400 font-mono" dir="ltr">{booking.customer_phone}</p>
         </div>
         <div className="text-right">
-          <p className="font-bold text-emerald-400">{formatCurrency(booking.total_amount)}</p>
-          <p className="text-xs text-amber-400">عربون: {formatCurrency(booking.deposit_amount)}</p>
+          <p className="font-bold text-emerald-400 text-lg">{formatCurrency(booking.total_amount)}</p>
+          <p className="text-xs text-amber-400 font-medium">العربون: {formatCurrency(booking.deposit_amount)}</p>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm mb-3">
-        <span className="text-gray-400">📅 {formatShortDate(booking.booking_date)}</span>
-        <span className="text-gray-400">🏡 {booking.properties?.name ?? '—'}</span>
-        <span className="text-gray-400">
-          💳 {booking.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقداً عند الوصول'}
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-gray-300 mb-4 p-2.5 rounded-xl bg-white/5 border border-white/5">
+        <span className="flex items-center gap-1">
+          <Calendar size={13} className="text-emerald-400" />
+          <span>{formatShortDate(booking.booking_date)}</span>
+        </span>
+        <span className="flex items-center gap-1">
+          <Home size={13} className="text-blue-400" />
+          <span>{booking.properties?.name ?? 'منتجع وبستان خالد العمدة'}</span>
+        </span>
+        <span className="flex items-center gap-1">
+          <CreditCard size={13} className="text-amber-400" />
+          <span>{booking.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقداً عند الوصول (يدوي)'}</span>
         </span>
       </div>
 
-      {receiptUrl && (
-        <div className="mb-3">
+      {receiptUrl ? (
+        <div className="mb-4 p-2 rounded-xl bg-black/40 border border-white/10">
           <button
             onClick={() => setShowReceipt(!showReceipt)}
-            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300"
+            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium"
           >
-            <Eye size={12} />
-            {showReceipt ? 'إخفاء الإيصال' : 'عرض الإيصال'}
+            <Eye size={13} />
+            <span>{showReceipt ? 'إخفاء الإيصال البنكي' : 'معاينة الإيصال البنكي المرفق'}</span>
           </button>
           {showReceipt && (
-            <img src={receiptUrl} alt="إيصال" className="mt-2 max-h-48 rounded-lg object-contain border border-white/10" />
+            <div className="mt-2 text-center">
+              <img src={receiptUrl} alt="إيصال السداد" className="max-h-56 mx-auto rounded-lg object-contain border border-white/10" />
+              <a
+                href={receiptUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block text-xs text-blue-400 underline"
+              >
+                فتح بالحجم الكامل
+              </a>
+            </div>
           )}
         </div>
-      )}
+      ) : isPendingReceipt ? (
+        <div className="mb-4 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-center gap-2">
+          <AlertCircle size={15} className="shrink-0" />
+          <span>لم يقم العميل برفع إيصال بنكي (دفع يدوي) — يمكنك تأكيد الحجز واستلام العربون يدوياً.</span>
+        </div>
+      ) : null}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/10">
         <button
-          onClick={() => onVerify(booking.id, true)}
+          onClick={() => onConfirm(booking)}
           disabled={loading}
-          className="btn-primary text-xs py-2 px-3"
+          className="btn-primary text-xs py-2 px-3.5 font-bold shadow-md shadow-emerald-500/20"
         >
-          {loading ? <Loader2 size={12} className="animate-spin" /> : <Check size={13} />}
-          تأكيد الحجز ✅
+          {loading ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />}
+          <span>{isPendingReceipt ? 'تأكيد واستلام العربون ✅' : 'تأكيد الحجز ✅'}</span>
         </button>
+
         <button
-          onClick={() => onVerify(booking.id, false)}
+          onClick={() => onCancel(booking)}
           disabled={loading}
-          className="btn-danger text-xs py-2 px-3"
+          className="btn-danger text-xs py-2 px-3 font-medium"
         >
-          <X size={13} />
-          رفض ❌
+          <X size={14} />
+          <span>إلغاء الحجز ❌</span>
         </button>
+
+        <button
+          onClick={() => onOpenDetails(booking)}
+          className="glass text-xs py-2 px-3 text-gray-300 hover:text-white rounded-xl flex items-center gap-1.5"
+        >
+          <Info size={13} />
+          <span>تفاصيل</span>
+        </button>
+
         <a
-          href={generateWhatsAppLink(booking.customer_phone, `السلام عليكم ${booking.customer_name}، بخصوص حجزكم بتاريخ ${formatShortDate(booking.booking_date)}`)}
+          href={generateWhatsAppLink(booking.customer_phone, `السلام عليكم ${booking.customer_name}، بخصوص حجزكم بتاريخ ${formatShortDate(booking.booking_date)} في منتجع وبستان خالد العمدة`)}
           target="_blank"
           rel="noopener noreferrer"
-          className="btn-ghost text-xs py-2 px-3"
+          className="glass text-xs py-2 px-3 text-green-400 hover:text-green-300 rounded-xl flex items-center gap-1.5 mr-auto"
         >
-          <MessageCircle size={13} />
-          واتساب 💬
+          <MessageCircle size={14} />
+          <span>واتساب 💬</span>
         </a>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// BOOKING DETAILS MODAL
+// ─────────────────────────────────────────────
+const BookingDetailsModal: React.FC<{
+  booking: Booking | null
+  onClose: () => void
+  onConfirm: (booking: Booking) => void
+  onCancel: (booking: Booking) => void
+}> = ({ booking, onClose, onConfirm, onCancel }) => {
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null)
+  const [loadingReceipt, setLoadingReceipt] = useState(false)
+
+  useEffect(() => {
+    if (!booking?.payment_receipt_url) {
+      setReceiptUrl(null)
+      return
+    }
+    const fetchReceipt = async () => {
+      setLoadingReceipt(true)
+      const { data } = await supabase.storage.from('receipts').createSignedUrl(booking.payment_receipt_url!, 3600)
+      if (data) setReceiptUrl(data.signedUrl)
+      setLoadingReceipt(false)
+    }
+    fetchReceipt()
+  }, [booking?.payment_receipt_url])
+
+  if (!booking) return null
+
+  const isPending = booking.status === 'pending_receipt' || booking.status === 'pending_verification'
+  const isCancellable = booking.status !== 'cancelled' && booking.status !== 'completed'
+  const remainingAmount = Math.max(0, booking.total_amount - booking.deposit_amount)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="card glass-strong max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar p-6 border border-white/15 shadow-2xl animate-scale-in">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+              <FileText size={20} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>تفاصيل الحجز #{booking.id.slice(0, 8)}</span>
+                <StatusBadge status={booking.status} />
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                تاريخ الإنشاء: {formatShortDate(booking.created_at)}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="glass p-2 rounded-xl text-gray-400 hover:text-white transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="space-y-4 text-sm">
+          {/* Customer info */}
+          <div className="p-4 rounded-xl bg-white/5 border border-white/5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs text-gray-400 mb-1">اسم العميل</p>
+              <p className="font-semibold text-white text-base">{booking.customer_name}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 mb-1">رقم الجوال</p>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-white text-base" dir="ltr">{booking.customer_phone}</span>
+                <a
+                  href={generateWhatsAppLink(booking.customer_phone, `السلام عليكم ${booking.customer_name}`)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 text-xs flex items-center gap-1"
+                >
+                  <MessageCircle size={12} />
+                  واتساب
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Unit & Dates */}
+          <div className="p-4 rounded-xl bg-white/5 border border-white/5 space-y-2">
+            <h4 className="font-semibold text-white flex items-center gap-2 text-xs text-gray-400 uppercase tracking-wider">
+              <Calendar size={14} className="text-emerald-400" />
+              بيانات الوحدة والمواعيد
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              <div>
+                <p className="text-xs text-gray-400">الوحدة المحجوزة</p>
+                <p className="font-medium text-white">{booking.properties?.name ?? 'منتجع وبستان خالد العمدة'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">تاريخ الحجز</p>
+                <p className="font-medium text-emerald-400">{formatShortDate(booking.booking_date)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">أوقات الوصول والمغادرة</p>
+                <p className="font-medium text-gray-300">
+                  {formatTime(booking.check_in)} ⬅ {formatTime(booking.check_out)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Addons */}
+          <div className="p-4 rounded-xl bg-white/5 border border-white/5 space-y-2">
+            <h4 className="font-semibold text-white flex items-center gap-2 text-xs text-gray-400 uppercase tracking-wider">
+              <Zap size={14} className="text-amber-400" />
+              الإضافات المطلوبة
+            </h4>
+            {booking.booking_addons && booking.booking_addons.length > 0 ? (
+              <div className="divide-y divide-white/5">
+                {booking.booking_addons.map((add) => (
+                  <div key={add.id} className="py-2 flex items-center justify-between text-xs">
+                    <span className="text-white font-medium">
+                      {add.addons?.icon ?? '✨'} {add.addons?.name ?? 'إضافة'} × {add.quantity}
+                    </span>
+                    <span className="text-amber-400 font-mono">
+                      {formatCurrency(add.unit_price * add.quantity)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500 py-1">لا توجد خدمات أو إضافات إضافية في هذا الحجز</p>
+            )}
+          </div>
+
+          {/* Financial Breakdown */}
+          <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 space-y-2">
+            <h4 className="font-semibold text-emerald-400 flex items-center gap-2 text-xs uppercase tracking-wider">
+              <Banknote size={14} />
+              الملخص المالي وطريقة الدفع
+            </h4>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+              <div>
+                <p className="text-xs text-gray-400">إجمالي المبلغ</p>
+                <p className="text-base font-bold text-white">{formatCurrency(booking.total_amount)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">العربون المطلوب</p>
+                <p className="text-base font-bold text-amber-400">{formatCurrency(booking.deposit_amount)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">المتبقي عند الوصول</p>
+                <p className="text-base font-bold text-gray-300">{formatCurrency(remainingAmount)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">طريقة الدفع</p>
+                <span className="inline-block mt-0.5 text-xs font-semibold px-2 py-0.5 rounded bg-white/10 text-white">
+                  {booking.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقداً عند الوصول (يدوي)'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Receipt Section */}
+          <div className="p-4 rounded-xl bg-white/5 border border-white/5 space-y-2">
+            <h4 className="font-semibold text-white flex items-center gap-2 text-xs text-gray-400 uppercase tracking-wider">
+              <Eye size={14} className="text-blue-400" />
+              إيصال السداد البنكي
+            </h4>
+            {loadingReceipt ? (
+              <div className="py-6 text-center text-gray-400 flex items-center justify-center gap-2">
+                <Loader2 size={16} className="animate-spin" />
+                <span>جاري تحميل الإيصال...</span>
+              </div>
+            ) : receiptUrl ? (
+              <div className="space-y-2">
+                <div className="relative group rounded-xl overflow-hidden border border-white/10 bg-black/40 max-h-64 flex items-center justify-center">
+                  <img src={receiptUrl} alt="إيصال السداد" className="max-h-64 object-contain" />
+                </div>
+                <div className="text-left">
+                  <a
+                    href={receiptUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-400 hover:text-blue-300 underline inline-flex items-center gap-1"
+                  >
+                    <span>فتح الإيصال بالحجم الكامل في نافذة جديدة</span>
+                    <ChevronRight size={12} className="rotate-180" />
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-2">
+                <AlertCircle size={16} className="shrink-0" />
+                <span>لم يتم إرفاق إيصال بعد (دفع يدوي أو نقداً عند الوصول) — يمكنك تأكيد استلام العربون يدوياً أدناه.</span>
+              </div>
+            )}
+          </div>
+
+          {/* Cancellation reason if cancelled */}
+          {booking.cancellation_reason && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-300">
+              <span className="font-bold">سبب الإلغاء: </span>
+              <span>{booking.cancellation_reason}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        <div className="pt-5 mt-5 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {isPending && (
+              <button
+                onClick={() => {
+                  onClose()
+                  onConfirm(booking)
+                }}
+                className="btn-primary text-xs py-2.5 px-4 font-bold shadow-md shadow-emerald-500/20"
+              >
+                <Check size={14} />
+                <span>تأكيد الحجز ✅</span>
+              </button>
+            )}
+            {isCancellable && (
+              <button
+                onClick={() => {
+                  onClose()
+                  onCancel(booking)
+                }}
+                className="btn-danger text-xs py-2.5 px-4 font-medium"
+              >
+                <X size={14} />
+                <span>إلغاء الحجز ❌</span>
+              </button>
+            )}
+            <a
+              href={generateWhatsAppLink(booking.customer_phone, `السلام عليكم ${booking.customer_name}، بخصوص حجزكم بتاريخ ${formatShortDate(booking.booking_date)} في منتجع وبستان خالد العمدة`)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="glass text-xs py-2.5 px-4 text-green-400 hover:text-green-300 rounded-xl flex items-center gap-1.5"
+            >
+              <MessageCircle size={14} />
+              <span>مراسلة واتساب</span>
+            </a>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="glass py-2.5 px-5 rounded-xl text-gray-400 hover:text-white text-xs"
+          >
+            إغلاق
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// CONFIRM ACTION MODAL
+// ─────────────────────────────────────────────
+const ConfirmActionModal: React.FC<{
+  booking: Booking | null
+  onClose: () => void
+  onConfirm: (booking: Booking) => Promise<void>
+  loading: boolean
+}> = ({ booking, onClose, onConfirm, loading }) => {
+  if (!booking) return null
+
+  const isPendingReceipt = booking.status === 'pending_receipt'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="card glass-strong max-w-md w-full p-6 border border-emerald-500/30 shadow-2xl animate-scale-in">
+        <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-4">
+          <CheckCircle2 size={28} />
+        </div>
+
+        <h3 className="text-lg font-bold text-white text-center mb-2">
+          {isPendingReceipt ? 'تأكيد الحجز واستلام العربون يدوياً' : 'تأكيد واعتماد الحجز'}
+        </h3>
+
+        <div className="text-sm text-gray-300 text-center mb-4 leading-relaxed">
+          {isPendingReceipt ? (
+            <p>
+              هل تم استلام العربون بمبلغ{' '}
+              <strong className="text-emerald-400 font-bold">{formatCurrency(booking.deposit_amount)}</strong>{' '}
+              من العميل <strong className="text-white">{booking.customer_name}</strong> يدوياً وتريد تأكيد الحجز؟
+            </p>
+          ) : (
+            <p>
+              هل قمت بمراجعة بيانات حجز العميل{' '}
+              <strong className="text-white">{booking.customer_name}</strong> بتاريخ{' '}
+              <strong className="text-emerald-400">{formatShortDate(booking.booking_date)}</strong>{' '}
+              وتريد تأكيده نهائياً؟
+            </p>
+          )}
+        </div>
+
+        <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-gray-400 mb-6 space-y-1">
+          <p>• سيتم تحويل حالة الحجز إلى: <span className="text-emerald-400 font-bold">مؤكد</span></p>
+          <p>• سيتم تثبيت التاريخ في تقويم الحجوزات كحجز مؤكد.</p>
+        </div>
+
+        <div className="flex items-center gap-3 justify-center">
+          <button
+            onClick={() => onConfirm(booking)}
+            disabled={loading}
+            className="btn-primary w-full py-2.5 font-bold shadow-lg shadow-emerald-500/20"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+            <span>{isPendingReceipt ? 'تأكيد واستلام العربون ✅' : 'تأكيد الحجز الآن ✅'}</span>
+          </button>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="glass w-full py-2.5 rounded-xl text-gray-400 hover:text-white"
+          >
+            إلغاء
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// CANCEL ACTION MODAL
+// ─────────────────────────────────────────────
+const CancelActionModal: React.FC<{
+  booking: Booking | null
+  onClose: () => void
+  onCancel: (booking: Booking, reason: string) => Promise<void>
+  loading: boolean
+}> = ({ booking, onClose, onCancel, loading }) => {
+  const [reason, setReason] = useState('')
+
+  if (!booking) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="card glass-strong max-w-md w-full p-6 border border-red-500/30 shadow-2xl animate-scale-in">
+        <div className="w-12 h-12 rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle size={28} />
+        </div>
+
+        <h3 className="text-lg font-bold text-white text-center mb-2">إلغاء الحجز وإتاحة التاريخ</h3>
+
+        <p className="text-sm text-gray-300 text-center mb-4 leading-relaxed">
+          هل أنت متأكد من رغبتك في إلغاء حجز العميل{' '}
+          <strong className="text-white">{booking.customer_name}</strong> بتاريخ{' '}
+          <strong className="text-amber-400">{formatShortDate(booking.booking_date)}</strong>؟
+        </p>
+
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-gray-400 mb-1.5">
+            سبب الإلغاء (اختياري):
+          </label>
+          <input
+            type="text"
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder="مثال: بناءً على طلب العميل / عدم تحويل العربون"
+            className="input-field text-sm min-h-[44px]"
+          />
+        </div>
+
+        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-300 mb-6">
+          ⚠️ تنبيه: سيتم تحرير تاريخ {formatShortDate(booking.booking_date)} في التقويم فوراً ليصبح متاحاً للعملاء.
+        </div>
+
+        <div className="flex items-center gap-3 justify-center">
+          <button
+            onClick={() => onCancel(booking, reason)}
+            disabled={loading}
+            className="btn-danger w-full py-2.5 font-bold shadow-lg shadow-red-500/20"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <X size={16} />}
+            <span>نعم، إلغاء الحجز ❌</span>
+          </button>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="glass w-full py-2.5 rounded-xl text-gray-400 hover:text-white"
+          >
+            تراجع
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -603,7 +1106,25 @@ const AdminPage: React.FC = () => {
   const [properties, setProperties] = useState<Property[]>([])
   const [addons, setAddons] = useState<Addon[]>([])
   const [loading, setLoading] = useState(true)
-  const [verifyingId, setVerifyingId] = useState<string | null>(null)
+
+  // Interactive action modal states
+  const [selectedBookingForDetails, setSelectedBookingForDetails] = useState<Booking | null>(null)
+  const [bookingToConfirm, setBookingToConfirm] = useState<Booking | null>(null)
+  const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
+
+  // Filtering states
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [pendingFilter, setPendingFilter] = useState<'all' | 'receipt' | 'verification'>('all')
+
+  // Toast state
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 3500)
+  }
 
   useEffect(() => {
     if (profile && profile.role !== 'admin') {
@@ -614,12 +1135,15 @@ const AdminPage: React.FC = () => {
   const fetchAll = useCallback(async () => {
     setLoading(true)
     const [{ data: b }, { data: s }, { data: p }, { data: a }] = await Promise.all([
-      supabase.from('bookings').select('*, properties(name)').order('created_at', { ascending: false }),
+      supabase
+        .from('bookings')
+        .select('*, properties(name), booking_addons(*, addons(*))')
+        .order('created_at', { ascending: false }),
       supabase.from('resort_settings').select('*').eq('id', 1).single(),
       supabase.from('properties').select('*').order('name'),
       supabase.from('addons').select('*').order('name'),
     ])
-    if (b) setBookings(b)
+    if (b) setBookings(b as any)
     if (s) setSettings(s)
     if (p) setProperties(p)
     if (a) setAddons(a)
@@ -628,27 +1152,101 @@ const AdminPage: React.FC = () => {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  const handleVerify = async (id: string, approved: boolean) => {
-    setVerifyingId(id)
-    await supabase.from('bookings').update({
-      status: approved ? 'confirmed' : 'cancelled',
-      ...(approved ? {} : { cancellation_reason: 'رُفض من قِبل الإدارة', cancelled_at: new Date().toISOString() }),
-    }).eq('id', id)
-    await fetchAll()
-    setVerifyingId(null)
+  // Execute confirmation
+  const handleExecuteConfirm = async (booking: Booking) => {
+    setActionLoading(true)
+    // Optimistic update
+    setBookings(prev => prev.map(b => b.id === booking.id ? { ...b, status: 'confirmed' } : b))
+
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status: 'confirmed' })
+      .eq('id', booking.id)
+
+    if (error) {
+      showToast('⚠️ تعذر تحديث الحجز: ' + error.message, 'error')
+      await fetchAll()
+    } else {
+      showToast('تم تأكيد الحجز بنجاح واعتماد التاريخ ✅', 'success')
+      await fetchAll()
+    }
+
+    setActionLoading(false)
+    setBookingToConfirm(null)
+  }
+
+  // Execute cancellation
+  const handleExecuteCancel = async (booking: Booking, reason: string) => {
+    setActionLoading(true)
+    const cancellationReason = reason.trim() || 'أُلغي من قبل إدارة المنتجع'
+
+    // Optimistic update
+    setBookings(prev => prev.map(b => b.id === booking.id ? {
+      ...b,
+      status: 'cancelled',
+      cancellation_reason: cancellationReason,
+      cancelled_at: new Date().toISOString()
+    } : b))
+
+    const { error } = await supabase
+      .from('bookings')
+      .update({
+        status: 'cancelled',
+        cancellation_reason: cancellationReason,
+        cancelled_at: new Date().toISOString()
+      })
+      .eq('id', booking.id)
+
+    if (error) {
+      showToast('⚠️ تعذر إلغاء الحجز: ' + error.message, 'error')
+      await fetchAll()
+    } else {
+      showToast('تم إلغاء الحجز وإتاحة التاريخ مجدداً في التقويم ❌', 'success')
+      await fetchAll()
+    }
+
+    setActionLoading(false)
+    setBookingToCancel(null)
   }
 
   const handleSaveSettings = async (s: Settings) => {
     await supabase.from('resort_settings').update(s).eq('id', 1)
     setSettings(s)
+    showToast('تم حفظ إعدادات المنتجع بنجاح ✓', 'success')
   }
 
-  const pending = bookings.filter(b => b.status === 'pending_verification')
-  const confirmed = bookings.filter(b => b.status === 'confirmed')
-  const totalRevenue = bookings.filter(b => b.status === 'confirmed' || b.status === 'completed')
-    .reduce((sum, b) => sum + b.deposit_amount, 0)
+  // Pending counts
+  const pendingReceipt = useMemo(() => bookings.filter(b => b.status === 'pending_receipt'), [bookings])
+  const pendingVerification = useMemo(() => bookings.filter(b => b.status === 'pending_verification'), [bookings])
+  const allPending = useMemo(() => bookings.filter(b => b.status === 'pending_verification' || b.status === 'pending_receipt'), [bookings])
+  const confirmed = useMemo(() => bookings.filter(b => b.status === 'confirmed'), [bookings])
+  const totalRevenue = useMemo(() => bookings
+    .filter(b => b.status === 'confirmed' || b.status === 'completed')
+    .reduce((sum, b) => sum + b.deposit_amount, 0), [bookings])
 
-  if (loading) return (
+  // Filtered pending list based on chip
+  const displayedPending = useMemo(() => {
+    if (pendingFilter === 'receipt') return pendingReceipt
+    if (pendingFilter === 'verification') return pendingVerification
+    return allPending
+  }, [pendingFilter, pendingReceipt, pendingVerification, allPending])
+
+  // Filtered bookings table
+  const filteredBookings = useMemo(() => {
+    return bookings.filter(b => {
+      const matchesSearch = searchQuery === '' ||
+        b.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        b.customer_phone.includes(searchQuery) ||
+        (b.properties?.name && b.properties.name.toLowerCase().includes(searchQuery.toLowerCase()))
+
+      const matchesStatus = statusFilter === 'all' ||
+        (statusFilter === 'pending' ? (b.status === 'pending_receipt' || b.status === 'pending_verification') : b.status === statusFilter)
+
+      return matchesSearch && matchesStatus
+    })
+  }, [bookings, searchQuery, statusFilter])
+
+  if (loading && bookings.length === 0) return (
     <div className="min-h-screen flex items-center justify-center">
       <Loader2 size={32} className="text-emerald-400 animate-spin" />
     </div>
@@ -656,7 +1254,7 @@ const AdminPage: React.FC = () => {
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview', label: 'نظرة عامة', icon: <BarChart3 size={16} /> },
-    { id: 'pending', label: 'بانتظار المراجعة', icon: <Clock size={16} />, badge: pending.length },
+    { id: 'pending', label: 'بانتظار الإجراء', icon: <Clock size={16} />, badge: allPending.length },
     { id: 'bookings', label: 'جميع الحجوزات', icon: <CalendarCheck size={16} /> },
     { id: 'properties', label: 'الوحدات', icon: <Home size={16} /> },
     { id: 'addons', label: 'الإضافات', icon: <Zap size={16} /> },
@@ -665,15 +1263,32 @@ const AdminPage: React.FC = () => {
 
   return (
     <div className="min-h-screen pt-16">
+      {/* Toast Alert */}
+      {toast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-bounce">
+          <div className={`px-5 py-3 rounded-2xl shadow-2xl border text-sm font-bold flex items-center gap-2 ${
+            toast.type === 'success'
+              ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/40 backdrop-blur-md shadow-emerald-950/50'
+              : 'bg-red-950/90 text-red-300 border-red-500/40 backdrop-blur-md shadow-red-950/50'
+          }`}>
+            <span>{toast.message}</span>
+          </div>
+        </div>
+      )}
+
       {/* Admin top bar */}
       <div className="border-b border-white/8 bg-[#161b22]">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-2">
-          <Shield size={16} className="text-amber-400" />
-          <span className="text-sm font-semibold text-amber-400">لوحة تحكم المالك</span>
-          <span className="text-gray-600">—</span>
-          <span className="text-sm text-gray-400">مرحباً، {profile?.full_name}</span>
-          <button onClick={fetchAll} className="mr-auto glass p-1.5 rounded-lg hover:bg-white/10">
-            <RefreshCw size={14} />
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Shield size={16} className="text-amber-400" />
+            <span className="text-sm font-semibold text-amber-400">لوحة تحكم إدارة المنتجع</span>
+            <span className="text-gray-600 hidden sm:inline">—</span>
+            <span className="text-sm text-gray-400 hidden sm:inline">مرحباً بك ({profile?.phone})</span>
+          </div>
+
+          <button onClick={fetchAll} className="glass py-1.5 px-3 rounded-xl hover:bg-white/10 text-xs text-gray-300 flex items-center gap-1.5">
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            <span>تحديث البيانات</span>
           </button>
         </div>
       </div>
@@ -708,27 +1323,42 @@ const AdminPage: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <MetricCard icon={<Banknote size={20} />} label="إجمالي الإيرادات" value={formatCurrency(totalRevenue)} sub="من العربونات المؤكدة" color="emerald" />
               <MetricCard icon={<CalendarCheck size={20} />} label="حجوزات مؤكدة" value={confirmed.length} color="blue" />
-              <MetricCard icon={<Clock size={20} />} label="قيد المراجعة" value={pending.length} color="amber" />
+              <MetricCard icon={<Clock size={20} />} label="بانتظار الإجراء" value={allPending.length} sub={`${pendingVerification.length} مراجعة • ${pendingReceipt.length} إيصال`} color="amber" />
               <MetricCard icon={<Users size={20} />} label="إجمالي الحجوزات" value={bookings.length} color="purple" />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
-                <h3 className="font-bold text-white mb-3">تقويم الحجوزات</h3>
-                <AdminCalendar bookings={bookings} properties={properties} />
+                <h3 className="font-bold text-white mb-3 flex items-center justify-between">
+                  <span>تقويم الحجوزات</span>
+                  <span className="text-xs text-gray-400 font-normal">اضغط على أي حجز لعرض تفاصيله</span>
+                </h3>
+                <AdminCalendar
+                  bookings={bookings}
+                  properties={properties}
+                  onSelectBooking={b => setSelectedBookingForDetails(b)}
+                />
               </div>
+
               <div>
-                <h3 className="font-bold text-white mb-3">آخر الحجوزات</h3>
-                <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
-                  {bookings.slice(0, 8).map(b => (
-                    <div key={b.id} className="card p-3 flex items-center justify-between text-sm">
+                <h3 className="font-bold text-white mb-3">آخر الحجوزات المسجلة</h3>
+                <div className="space-y-2.5 max-h-[460px] overflow-y-auto custom-scrollbar">
+                  {bookings.slice(0, 10).map(b => (
+                    <div
+                      key={b.id}
+                      onClick={() => setSelectedBookingForDetails(b)}
+                      className="card p-3 flex items-center justify-between text-sm hover:border-emerald-500/40 transition-colors cursor-pointer"
+                    >
                       <div>
                         <p className="font-medium text-white">{b.customer_name}</p>
-                        <p className="text-xs text-gray-500">{formatShortDate(b.booking_date)} • {b.properties?.name ?? '—'}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {formatShortDate(b.booking_date)} • {b.properties?.name ?? '—'} • {formatCurrency(b.total_amount)}
+                        </p>
                       </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CLASSES[b.status]}`}>
-                        {STATUS_LABELS[b.status]}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={b.status} />
+                        <ChevronRight size={14} className="text-gray-500" />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -737,25 +1367,65 @@ const AdminPage: React.FC = () => {
           </div>
         )}
 
+        {/* PENDING TAB */}
         {activeTab === 'pending' && (
           <div>
-            <h3 className="font-bold text-white mb-4">
-              الحجوزات بانتظار المراجعة
-              {pending.length > 0 && <span className="mr-2 text-amber-400">({pending.length})</span>}
-            </h3>
-            {pending.length === 0 ? (
-              <div className="text-center py-16">
-                <CheckCircle2 size={40} className="text-emerald-400 mx-auto mb-3" />
-                <p className="text-gray-400">لا توجد حجوزات بانتظار المراجعة</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+              <div>
+                <h3 className="font-bold text-white text-lg">
+                  الحجوزات التي تتطلب اتخاذ إجراء
+                  {allPending.length > 0 && <span className="mr-2 text-amber-400">({allPending.length})</span>}
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  حجوزات بانتظار التحقق من الإيصال أو تأكيد استلام العربون يدوياً
+                </p>
+              </div>
+
+              {/* Filter chips */}
+              <div className="flex items-center gap-1.5 p-1 rounded-xl glass">
+                <button
+                  onClick={() => setPendingFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    pendingFilter === 'all' ? 'bg-emerald-500 text-white' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  الكل ({allPending.length})
+                </button>
+                <button
+                  onClick={() => setPendingFilter('verification')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    pendingFilter === 'verification' ? 'bg-blue-500 text-white' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  بانتظار المراجعة ({pendingVerification.length})
+                </button>
+                <button
+                  onClick={() => setPendingFilter('receipt')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    pendingFilter === 'receipt' ? 'bg-amber-500 text-white' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  بانتظار الإيصال / يدوي ({pendingReceipt.length})
+                </button>
+              </div>
+            </div>
+
+            {displayedPending.length === 0 ? (
+              <div className="card py-16 text-center border-dashed border-white/10">
+                <CheckCircle2 size={44} className="text-emerald-400 mx-auto mb-3" />
+                <h4 className="text-base font-bold text-white mb-1">لا توجد حجوزات بانتظار الإجراء حالياً</h4>
+                <p className="text-xs text-gray-400">جميع الحجوزات معتمدة ومؤكدة بشكل سليم</p>
               </div>
             ) : (
-              <div className="space-y-4 max-w-2xl">
-                {pending.map(b => (
-                  <PendingCard
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {displayedPending.map(b => (
+                  <ActionableBookingCard
                     key={b.id}
                     booking={b}
-                    onVerify={handleVerify}
-                    loading={verifyingId === b.id}
+                    onConfirm={booking => setBookingToConfirm(booking)}
+                    onCancel={booking => setBookingToCancel(booking)}
+                    onOpenDetails={booking => setSelectedBookingForDetails(booking)}
+                    loading={actionLoading}
                   />
                 ))}
               </div>
@@ -763,52 +1433,155 @@ const AdminPage: React.FC = () => {
           </div>
         )}
 
+        {/* ALL BOOKINGS TAB */}
         {activeTab === 'bookings' && (
-          <div>
-            <h3 className="font-bold text-white mb-4">جميع الحجوزات ({bookings.length})</h3>
-            <div className="overflow-x-auto rounded-xl border border-white/10">
-              <table className="w-full text-sm">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="font-bold text-white text-lg">سجل جميع الحجوزات ({bookings.length})</h3>
+                <p className="text-xs text-gray-400">عرض وإدارة وتأكيد كافة الحجوزات المسجلة في النظام</p>
+              </div>
+
+              {/* Filters */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[200px]">
+                  <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="بحث باسم العميل أو الجوال..."
+                    className="input-field text-xs pr-8 py-2 min-h-[38px]"
+                  />
+                </div>
+
+                <div className="relative">
+                  <select
+                    value={statusFilter}
+                    onChange={e => setStatusFilter(e.target.value)}
+                    className="input-field text-xs py-2 px-3 min-h-[38px] cursor-pointer bg-[#161b22]"
+                  >
+                    <option value="all">كل الحالات ({bookings.length})</option>
+                    <option value="pending">بانتظار الإجراء ({allPending.length})</option>
+                    <option value="confirmed">مؤكد ({confirmed.length})</option>
+                    <option value="cancelled">ملغي ({bookings.filter(b => b.status === 'cancelled').length})</option>
+                    <option value="completed">مكتمل</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto rounded-2xl border border-white/10 bg-[#161b22]/50 shadow-2xl">
+              <table className="w-full text-right text-sm">
                 <thead>
-                  <tr className="bg-white/5 border-b border-white/10">
-                    {['العميل', 'الوحدة', 'التاريخ', 'الإجمالي', 'العربون', 'الحالة', ''].map(h => (
-                      <th key={h} className="text-right px-4 py-3 text-xs text-gray-400 font-medium">{h}</th>
-                    ))}
+                  <tr className="bg-white/5 border-b border-white/10 text-xs text-gray-400 font-semibold">
+                    <th className="px-4 py-3.5">العميل</th>
+                    <th className="px-4 py-3.5">الوحدة والتاريخ</th>
+                    <th className="px-4 py-3.5">المالي</th>
+                    <th className="px-4 py-3.5">طريقة الدفع</th>
+                    <th className="px-4 py-3.5">الحالة</th>
+                    <th className="px-4 py-3.5 text-center">الإجراءات</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {bookings.map(b => (
-                    <tr key={b.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-white">{b.customer_name}</p>
-                        <p className="text-xs text-gray-500">{b.customer_phone}</p>
-                      </td>
-                      <td className="px-4 py-3 text-gray-300">{b.properties?.name ?? '—'}</td>
-                      <td className="px-4 py-3 text-gray-300">{formatShortDate(b.booking_date)}</td>
-                      <td className="px-4 py-3 font-medium text-white">{formatCurrency(b.total_amount)}</td>
-                      <td className="px-4 py-3 text-amber-400">{formatCurrency(b.deposit_amount)}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CLASSES[b.status]}`}>
-                          {STATUS_LABELS[b.status]}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <a
-                          href={generateWhatsAppLink(b.customer_phone, `السلام عليكم ${b.customer_name}`)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="glass p-1.5 rounded-lg inline-flex hover:bg-white/10"
-                        >
-                          <MessageCircle size={13} className="text-green-400" />
-                        </a>
+                <tbody className="divide-y divide-white/5">
+                  {filteredBookings.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-12 text-gray-500 text-sm">
+                        لا توجد حجوزات مطابقة لمعايير البحث
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredBookings.map(b => {
+                      const isPending = b.status === 'pending_receipt' || b.status === 'pending_verification'
+                      const isCancellable = b.status !== 'cancelled' && b.status !== 'completed'
+
+                      return (
+                        <tr key={b.id} className="hover:bg-white/[0.02] transition-colors">
+                          <td className="px-4 py-3.5">
+                            <p className="font-bold text-white">{b.customer_name}</p>
+                            <p className="text-xs text-gray-400 font-mono mt-0.5" dir="ltr">{b.customer_phone}</p>
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            <p className="font-medium text-emerald-400">{formatShortDate(b.booking_date)}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{b.properties?.name ?? '—'}</p>
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            <p className="font-bold text-white">{formatCurrency(b.total_amount)}</p>
+                            <p className="text-xs text-amber-400 font-medium mt-0.5">عربون: {formatCurrency(b.deposit_amount)}</p>
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            <span className="text-xs px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-gray-300 font-medium">
+                              {b.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقداً عند الوصول'}
+                            </span>
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            <StatusBadge status={b.status} />
+                          </td>
+
+                          {/* ACTIONS COLUMN */}
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {/* Details button */}
+                              <button
+                                onClick={() => setSelectedBookingForDetails(b)}
+                                className="glass p-2 rounded-xl text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
+                                title="عرض التفاصيل"
+                              >
+                                <Info size={15} />
+                              </button>
+
+                              {/* Confirm button (for pending_receipt & pending_verification) */}
+                              {isPending && (
+                                <button
+                                  onClick={() => setBookingToConfirm(b)}
+                                  className="btn-primary text-xs py-1.5 px-2.5 font-bold shadow-sm shadow-emerald-500/20"
+                                  title="تأكيد الحجز"
+                                >
+                                  <Check size={14} />
+                                  <span className="hidden xl:inline">تأكيد</span>
+                                </button>
+                              )}
+
+                              {/* Cancel button */}
+                              {isCancellable && (
+                                <button
+                                  onClick={() => setBookingToCancel(b)}
+                                  className="btn-danger text-xs py-1.5 px-2.5 font-medium"
+                                  title="إلغاء الحجز"
+                                >
+                                  <X size={14} />
+                                  <span className="hidden xl:inline">إلغاء</span>
+                                </button>
+                              )}
+
+                              {/* WhatsApp link */}
+                              <a
+                                href={generateWhatsAppLink(b.customer_phone, `السلام عليكم ${b.customer_name}، بخصوص حجزكم بتاريخ ${formatShortDate(b.booking_date)} في منتجع وبستان خالد العمدة`)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="glass p-2 rounded-xl text-green-400 hover:text-green-300 hover:bg-green-500/10 transition-colors"
+                                title="مراسلة واتساب"
+                              >
+                                <MessageCircle size={15} />
+                              </a>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
+        {/* OTHER TABS */}
         {activeTab === 'properties' && (
           <PropertiesTab properties={properties} onRefresh={fetchAll} />
         )}
@@ -821,11 +1594,33 @@ const AdminPage: React.FC = () => {
           <SettingsTab settings={settings} onSave={handleSaveSettings} />
         )}
       </div>
+
+      {/* MODALS */}
+      <BookingDetailsModal
+        booking={selectedBookingForDetails}
+        onClose={() => setSelectedBookingForDetails(null)}
+        onConfirm={b => setBookingToConfirm(b)}
+        onCancel={b => setBookingToCancel(b)}
+      />
+
+      <ConfirmActionModal
+        booking={bookingToConfirm}
+        onClose={() => setBookingToConfirm(null)}
+        onConfirm={handleExecuteConfirm}
+        loading={actionLoading}
+      />
+
+      <CancelActionModal
+        booking={bookingToCancel}
+        onClose={() => setBookingToCancel(null)}
+        onCancel={handleExecuteCancel}
+        loading={actionLoading}
+      />
     </div>
   )
 }
 
-// need to fix missing import
+// Icon helper
 const Zap: React.FC<{ size?: number; className?: string }> = ({ size = 16, className }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />

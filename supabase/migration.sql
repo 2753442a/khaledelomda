@@ -303,12 +303,13 @@ drop policy if exists "Admin manage addons" on addons;
 
 -- bookings policies
 drop policy if exists "Users read own bookings" on bookings;
-create policy "Users read own bookings" on bookings
-  for select using (customer_id = auth.uid() or public.is_admin());
+drop policy if exists "Anyone read bookings" on bookings;
+create policy "Anyone read bookings" on bookings
+  for select using (true);
 
 drop policy if exists "Users insert booking" on bookings;
 create policy "Users insert booking" on bookings
-  for insert with check (customer_id = auth.uid() or public.is_admin());
+  for insert with check (true);
 
 drop policy if exists "Users update own booking" on bookings;
 create policy "Users update own booking" on bookings
@@ -320,23 +321,13 @@ create policy "Admin delete booking" on bookings
 
 -- booking_addons policies
 drop policy if exists "Users read own booking addons" on booking_addons;
-create policy "Users read own booking addons" on booking_addons
-  for select using (
-    exists (
-      select 1 from bookings b
-      where b.id = booking_id and (
-        b.customer_id = auth.uid() or public.is_admin()
-      )
-    )
-  );
+drop policy if exists "Anyone read booking addons" on booking_addons;
+create policy "Anyone read booking addons" on booking_addons
+  for select using (true);
 
 drop policy if exists "Users insert booking addons" on booking_addons;
 create policy "Users insert booking addons" on booking_addons
-  for insert with check (
-    exists (
-      select 1 from bookings b where b.id = booking_id and (b.customer_id = auth.uid() or public.is_admin())
-    )
-  );
+  for insert with check (true);
 
 -- ─────────────────────────────────────────────────────────────
 -- 12. Storage Bucket & Policies (receipts)
