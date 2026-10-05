@@ -17,7 +17,16 @@ const AuthModal: React.FC<AuthModalProps> = ({ open, onClose }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (!open) return null
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [open])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,16 +53,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ open, onClose }) => {
     setError(null)
   }
 
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = 'unset'
-    }
-    return () => {
-      document.body.style.overflow = 'unset'
-    }
-  }, [open])
+  if (!open) return null
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 pb-safe">

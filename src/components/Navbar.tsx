@@ -6,6 +6,7 @@ import {
   Settings, ChevronDown, Shield
 } from 'lucide-react'
 import AuthModal from './AuthModal'
+import ErrorBoundary from './ErrorBoundary'
 
 const Navbar: React.FC = () => {
   const { user, profile, signOut } = useAuth()
@@ -126,7 +127,9 @@ const Navbar: React.FC = () => {
         )}
       </nav>
 
-      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
+      <ErrorBoundary fallbackTitle="عذراً، حدث خطأ غير متوقع أثناء تحميل هذه النافذة.">
+        <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
+      </ErrorBoundary>
     </>
   )
 }

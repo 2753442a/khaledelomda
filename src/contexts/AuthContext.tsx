@@ -42,66 +42,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true)
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
-    setProfile(data)
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+      if (!error && data) {
+        setProfile(data)
+      }
+    } catch (e) {
+      console.error('Error fetching profile:', e)
+    }
   }
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        await fetchProfile(session.user.id)
-      } else {
-        setProfile(null)
-      }
+    try {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          await fetchProfile(session.user.id)
+        } else {
+          setProfile(null)
+        }
+        setLoading(false)
+      })
+      return () => subscription.unsubscribe()
+    } catch (e) {
+      console.error('Auth state change listener error:', e)
       setLoading(false)
-    })
-    return () => subscription.unsubscribe()
+    }
   }, [])
 
   const signUp = async (fullName: string, phone: string, password: string) => {
-    const cleanPhone = phone.replace(/\s/g, '')
-    const email = phoneToEmail(cleanPhone)
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
+    try {
+      const cleanPhone = phone.replace(/\s/g, '')
+      const email = phoneToEmail(cleanPhone)
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            phone: cleanPhone,
+          },
+        },
+      })
+      if (error) return { error: error.message }
+      if (data.user) {
+        const { error: profileError } = await supabase.from('profiles').insert({
+          id: data.user.id,
           full_name: fullName,
           phone: cleanPhone,
-        },
-      },
-    })
-    if (error) return { error: error.message }
-    if (data.user) {
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
-        full_name: fullName,
-        phone: cleanPhone,
-        role: 'customer',
-      })
-      if (profileError && !profileError.message.includes('duplicate')) {
-        return { error: profileError.message }
+          role: 'customer',
+        })
+        if (profileError && !profileError.message.includes('duplicate')) {
+          return { error: profileError.message }
+        }
       }
+      return { error: null }
+    } catch (err: any) {
+      return { error: err?.message || 'حدث خطأ غير متوقع أثناء إنشاء الحساب' }
     }
-    return { error: null }
   }
 
   const signIn = async (phone: string, password: string) => {
-    const email = phoneToEmail(phone)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) return { error: 'رقم الجوال أو كلمة المرور غير صحيحة' }
-    return { error: null }
+    try {
+      const email = phoneToEmail(phone)
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) return { error: 'رقم الجوال أو كلمة المرور غير صحيحة' }
+      return { error: null }
+    } catch (err: any) {
+      return { error: err?.message || 'حدث خطأ غير متوقع أثناء تسجيل الدخول' }
+    }
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
-    setProfile(null)
+    try {
+      await supabase.auth.signOut()
+    } catch (e) {
+      console.error('Error signing out:', e)
+    } finally {
+      setUser(null)
+      setProfile(null)
+    }
   }
 
   const refreshProfile = async () => {
