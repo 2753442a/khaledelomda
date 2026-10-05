@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
   Menu, X, User, LogOut, CalendarCheck, Home,
-  Settings, ChevronDown, Shield
+  Settings, ChevronDown, Shield, Droplets
 } from 'lucide-react'
 import AuthModal from './AuthModal'
 import ErrorBoundary from './ErrorBoundary'
@@ -36,6 +36,7 @@ const Navbar: React.FC = () => {
           <div className="hidden md:flex items-center gap-1">
             <NavLink to="/" label="الرئيسية" icon={<Home size={15} />} active={isActive('/')} />
             <NavLink to="/book" label="احجز الآن" icon={<CalendarCheck size={15} />} active={isActive('/book')} />
+            <NavLink to="/water" label="وايت ماء حلو 💧" icon={<Droplets size={15} className="text-teal-400" />} active={isActive('/water')} />
             {user && (
               <NavLink to="/my-bookings" label="حجوزاتي" icon={<CalendarCheck size={15} />} active={isActive('/my-bookings')} />
             )}
@@ -119,6 +120,7 @@ const Navbar: React.FC = () => {
           <div className="md:hidden border-t border-white/8 bg-[#161b22] px-4 py-3 space-y-1 animate-fade-in-up">
             <MobileNavLink to="/" label="الرئيسية" onClick={() => setMenuOpen(false)} />
             <MobileNavLink to="/book" label="احجز الآن" onClick={() => setMenuOpen(false)} />
+            <MobileNavLink to="/water" label="وايت ماء حلو 💧" onClick={() => setMenuOpen(false)} />
             {user && <MobileNavLink to="/my-bookings" label="حجوزاتي" onClick={() => setMenuOpen(false)} />}
             {profile?.role === 'admin' && (
               <MobileNavLink to="/admin" label="لوحة التحكم" onClick={() => setMenuOpen(false)} />

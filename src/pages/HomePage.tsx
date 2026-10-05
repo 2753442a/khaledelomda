@@ -77,11 +77,72 @@ const ContactSection: React.FC = () => {
   )
 }
 
+const WaterServiceBanner: React.FC = () => {
+  return (
+    <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div className="relative rounded-3xl overflow-hidden p-8 sm:p-12 border border-teal-500/40 bg-gradient-to-r from-teal-950 via-slate-950 to-emerald-950 shadow-2xl">
+        <div className="absolute -top-16 -right-16 w-80 h-80 bg-teal-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-16 -left-16 w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8">
+          <div className="space-y-4 text-center lg:text-right max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-teal-500/40 bg-teal-500/15 text-teal-300 text-xs sm:text-sm font-bold shadow-lg">
+              <span className="text-base">💧</span>
+              <span>خدمة التوصيل السريع للمنازل 24/7</span>
+              <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse ml-1" />
+            </div>
+
+            <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight">
+              طلب وايت ماء حلو <span className="bg-gradient-to-r from-teal-300 via-emerald-300 to-amber-200 bg-clip-text text-transparent">للمنازل والاستراحات</span>
+            </h2>
+
+            <p className="text-gray-300 text-sm sm:text-base leading-relaxed">
+              نوفر لكم مياه عذبة نقية صالحة للشرب والاستخدام المنزلي على مدار 24 ساعة بأحجام مختلفة (عايدي وتريلا)، مع دقة وسرعة في الوصول عبر مشاركة موقعك الجغرافي (GPS) بنقرة واحدة.
+            </p>
+
+            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 text-xs sm:text-sm text-teal-200 font-medium pt-1">
+              <span className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
+                <span>⚡</span> توصيل فوري خلال وقت قياسي
+              </span>
+              <span className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
+                <span>📍</span> تحديد الموقع التلقائي بالـ GPS
+              </span>
+              <span className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
+                <span>💳</span> دفع نقداً أو شبكة عند التفريغ
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-3.5 shrink-0 w-full sm:w-auto">
+            <Link
+              to="/water"
+              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-teal-500 via-emerald-500 to-green-600 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-black text-base shadow-xl shadow-teal-500/30 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2 min-w-[200px]"
+            >
+              <span>اطلب وايت الآن 🚚</span>
+            </Link>
+
+            <a
+              href={generateWhatsAppLink('0547382222', 'السلام عليكم، أود طلب وايت ماء حلو')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full sm:w-auto px-6 py-4 rounded-2xl glass hover:bg-white/10 text-white font-bold text-base border border-white/15 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+            >
+              <MessageCircle size={19} className="text-teal-400" />
+              <span>واتساب الخدمة</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 const HomePage: React.FC = () => {
   return (
     <main className="min-h-screen bg-[#0d1117] text-white selection:bg-emerald-500 selection:text-white">
       <Hero />
       <Facilities />
+      <WaterServiceBanner />
       <ContactSection />
 
       {/* Luxury Footer */}
@@ -90,6 +151,8 @@ const HomePage: React.FC = () => {
           <Link to="/" className="hover:text-emerald-400 transition-colors">الرئيسية</Link>
           <span>•</span>
           <Link to="/book" className="hover:text-emerald-400 transition-colors">احجز الآن</Link>
+          <span>•</span>
+          <Link to="/water" className="hover:text-emerald-400 transition-colors">وايت ماء حلو</Link>
           <span>•</span>
           <Link to="/my-bookings" className="hover:text-emerald-400 transition-colors">حجوزاتي</Link>
           <span>•</span>

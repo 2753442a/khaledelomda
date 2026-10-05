@@ -6,6 +6,7 @@ import HomePage from './pages/HomePage'
 import BookPage from './pages/BookPage'
 import MyBookingsPage from './pages/MyBookingsPage'
 import AdminPage from './pages/AdminPage'
+import WaterOrderPage from './pages/WaterOrderPage'
 
 const App: React.FC = () => {
   return (
@@ -17,6 +18,7 @@ const App: React.FC = () => {
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/book" element={<BookPage />} />
+              <Route path="/water" element={<WaterOrderPage />} />
               <Route path="/my-bookings" element={<MyBookingsPage />} />
               <Route path="/admin" element={<AdminPage />} />
             </Routes>

@@ -12,7 +12,8 @@ import {
   Check, X, MessageCircle, Trash2, RefreshCw, Plus, Edit3,
   AlertTriangle, Shield, ChevronRight, ChevronLeft, Home,
   CheckCircle2, XCircle, Banknote, Eye, Info, Phone, Calendar,
-  CreditCard, Search, Filter, AlertCircle, FileText, CheckCircle
+  CreditCard, Search, Filter, AlertCircle, FileText, CheckCircle,
+  Droplets, Navigation, MapPin, Truck, ExternalLink
 } from 'lucide-react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval,
   getDay, addMonths, subMonths, parseISO, isSameDay } from 'date-fns'
@@ -102,6 +103,39 @@ interface Addon {
   icon: string
   is_active: boolean
 }
+
+interface WaterTankerSize {
+  id: string
+  name: string
+  capacity_label: string
+  price: number
+  is_active: boolean
+  display_order: number
+  created_at?: string
+}
+
+interface WaterOrder {
+  id: string
+  customer_id: string | null
+  customer_name: string
+  customer_phone: string
+  tanker_size_id: string | null
+  tanker_size_name: string
+  tanker_price: number
+  district: string
+  street_address: string | null
+  google_maps_url: string | null
+  tank_type: 'أرضي' | 'علوي' | 'كلاهما'
+  payment_method: 'cash' | 'pos_on_delivery' | 'bank_transfer'
+  status: 'new' | 'dispatched' | 'delivered' | 'cancelled'
+  notes: string | null
+  created_at: string
+}
+
+const DEFAULT_WATER_SIZES: WaterTankerSize[] = [
+  { id: '1', name: 'وايت عايدي (حجم متوسط)', capacity_label: '12 طن - 12,000 لتر', price: 120, is_active: true, display_order: 1 },
+  { id: '2', name: 'وايت تريلا (حجم كبير)', capacity_label: '30 طن - 30,000 لتر', price: 250, is_active: true, display_order: 2 },
+]
 
 // ─────────────────────────────────────────────
 // STATUS BADGES & CONFIG
@@ -1114,9 +1148,616 @@ const AddonsTab: React.FC<{ addons: Addon[]; onRefresh: () => void }> = ({ addon
 }
 
 // ─────────────────────────────────────────────
+// WATER ORDERS TAB (وايت ماء حلو)
+// ─────────────────────────────────────────────
+interface WaterOrdersTabProps {
+  orders: WaterOrder[]
+  sizes: WaterTankerSize[]
+  onRefresh: () => void
+  showToast: (msg: string, type?: 'success' | 'error') => void
+}
+
+const WaterOrdersTab: React.FC<WaterOrdersTabProps> = ({ orders, sizes, onRefresh, showToast }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'orders' | 'sizes'>('orders')
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
+
+  // Tanker Size Form State
+  const [showSizeModal, setShowSizeModal] = useState(false)
+  const [editingSizeId, setEditingSizeId] = useState<string | null>(null)
+  const [sizeForm, setSizeForm] = useState({
+    name: '',
+    capacity_label: '',
+    price: '',
+    display_order: '1',
+    is_active: true,
+  })
+  const [savingSize, setSavingSize] = useState(false)
+
+  // Analytics calculation
+  const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const todayOrders = useMemo(() => {
+    return orders.filter(o => o.created_at?.slice(0, 10) === todayStr)
+  }, [orders, todayStr])
+
+  const todayDeliveredRevenue = useMemo(() => {
+    return todayOrders
+      .filter(o => o.status === 'delivered')
+      .reduce((sum, o) => sum + Number(o.tanker_price || 0), 0)
+  }, [todayOrders])
+
+  const activeOrdersCount = useMemo(() => {
+    return orders.filter(o => o.status === 'new' || o.status === 'dispatched').length
+  }, [orders])
+
+  const sizeBreakdown = useMemo(() => {
+    const map: Record<string, { count: number; revenue: number }> = {}
+    orders.forEach(o => {
+      const name = o.tanker_size_name || 'غير محدد'
+      if (!map[name]) map[name] = { count: 0, revenue: 0 }
+      map[name].count += 1
+      if (o.status === 'delivered') {
+        map[name].revenue += Number(o.tanker_price || 0)
+      }
+    })
+    return map
+  }, [orders])
+
+  // Filtered orders
+  const filteredOrders = useMemo(() => {
+    return orders.filter(o => {
+      const q = search.toLowerCase()
+      const matchesSearch =
+        !search ||
+        o.customer_name?.toLowerCase().includes(q) ||
+        o.customer_phone?.includes(q) ||
+        o.district?.toLowerCase().includes(q) ||
+        o.tanker_size_name?.toLowerCase().includes(q)
+
+      const matchesStatus = statusFilter === 'all' || o.status === statusFilter
+      return matchesSearch && matchesStatus
+    })
+  }, [orders, search, statusFilter])
+
+  // Update order status
+  const handleUpdateStatus = async (orderId: string, newStatus: WaterOrder['status']) => {
+    setUpdatingOrderId(orderId)
+    try {
+      const { error } = await supabase
+        .from('water_orders')
+        .update({ status: newStatus })
+        .eq('id', orderId)
+
+      if (error) {
+        showToast('⚠️ لم يتم حفظ الحالة: ' + error.message, 'error')
+      } else {
+        showToast('✅ تم تحديث حالة الطلب بنجاح')
+        onRefresh()
+      }
+    } catch (e: any) {
+      showToast('⚠️ خطأ في الاتصال بالخادم', 'error')
+    } finally {
+      setUpdatingOrderId(null)
+    }
+  }
+
+  // Handle Tanker Size Save
+  const handleSaveSize = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!sizeForm.name.trim() || !sizeForm.price) return
+    setSavingSize(true)
+
+    const payload = {
+      name: sizeForm.name.trim(),
+      capacity_label: sizeForm.capacity_label.trim(),
+      price: Number(sizeForm.price),
+      display_order: Number(sizeForm.display_order) || 1,
+      is_active: sizeForm.is_active,
+    }
+
+    try {
+      if (editingSizeId) {
+        const { error } = await supabase
+          .from('water_tanker_sizes')
+          .update(payload)
+          .eq('id', editingSizeId)
+        if (error) throw error
+        showToast('✅ تم تعديل حجم الوايت بنجاح')
+      } else {
+        const { error } = await supabase
+          .from('water_tanker_sizes')
+          .insert([payload])
+        if (error) throw error
+        showToast('✅ تم إضافة حجم الوايت بنجاح')
+      }
+      setShowSizeModal(false)
+      setEditingSizeId(null)
+      setSizeForm({ name: '', capacity_label: '', price: '', display_order: '1', is_active: true })
+      onRefresh()
+    } catch (err: any) {
+      showToast('⚠️ خطأ: ' + err.message, 'error')
+    } finally {
+      setSavingSize(false)
+    }
+  }
+
+  const startEditSize = (s: WaterTankerSize) => {
+    setEditingSizeId(s.id)
+    setSizeForm({
+      name: s.name,
+      capacity_label: s.capacity_label,
+      price: String(s.price),
+      display_order: String(s.display_order || 1),
+      is_active: s.is_active,
+    })
+    setShowSizeModal(true)
+  }
+
+  const toggleSizeActive = async (s: WaterTankerSize) => {
+    try {
+      const { error } = await supabase
+        .from('water_tanker_sizes')
+        .update({ is_active: !s.is_active })
+        .eq('id', s.id)
+      if (error) throw error
+      showToast(s.is_active ? 'تم تعطيل الحجم' : 'تم تفعيل الحجم بنجاح')
+      onRefresh()
+    } catch (err: any) {
+      showToast('⚠️ خطأ في التحديث', 'error')
+    }
+  }
+
+  const getDriverWhatsAppMsg = (o: WaterOrder) => {
+    const paymentLabel = o.payment_method === 'cash'
+      ? 'نقداً عند التفريغ'
+      : o.payment_method === 'pos_on_delivery'
+      ? 'شبكة (مدى) عند الوصول'
+      : 'تحويل بنكي مسبق'
+
+    return `💧 *توجيه طلب وايت ماء حلو للسائق* 💧
+📋 *تفاصيل الطلب:*
+ــــــــــــــــــــــــــــــــــــــــ
+👤 *العميل:* ${o.customer_name}
+📱 *الجوال:* ${o.customer_phone}
+🚚 *حجم الوايت:* ${o.tanker_size_name}
+💵 *المبلغ المطلوب:* ${formatCurrency(o.tanker_price)}
+📍 *الحي:* ${o.district}
+${o.street_address ? `🏠 *العنوان / الشارع:* ${o.street_address}\n` : ''}🎯 *نوع الخزان:* ${o.tank_type}
+💳 *طريقة الدفع:* ${paymentLabel}
+${o.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${o.google_maps_url}\n` : ''}${o.notes ? `📝 *ملاحظات:* ${o.notes}\n` : ''}ــــــــــــــــــــــــــــــــــــــــ
+🌟 نرجو سرعة التوصيل والتأكيد بعد التفريغ!`
+  }
+
+  const WATER_STATUS_CONFIG: Record<string, { label: string; badgeClass: string }> = {
+    new: { label: 'جديد', badgeClass: 'bg-amber-500/15 text-amber-300 border border-amber-500/30' },
+    dispatched: { label: 'جاري التوصيل', badgeClass: 'bg-blue-500/15 text-blue-300 border border-blue-500/30' },
+    delivered: { label: 'تم التفريغ والدفع', badgeClass: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' },
+    cancelled: { label: 'ملغي', badgeClass: 'bg-red-500/15 text-red-300 border border-red-500/30' },
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* ── Section A: Daily Analytics & Financial KPI Cards ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <MetricCard
+          icon={<Truck size={20} />}
+          label="طلبات اليوم"
+          value={todayOrders.length}
+          sub={`منها ${activeOrdersCount} قيد التنفيذ`}
+          color="blue"
+        />
+        <MetricCard
+          icon={<Banknote size={20} />}
+          label="إيراد الوايت اليومي"
+          value={formatCurrency(todayDeliveredRevenue)}
+          sub="من الطلبات المفرغة اليوم"
+          color="emerald"
+        />
+        <MetricCard
+          icon={<Droplets size={20} />}
+          label="طلبات نشطة"
+          value={activeOrdersCount}
+          sub="جديد + جاري التوصيل"
+          color="amber"
+        />
+        <MetricCard
+          icon={<Users size={20} />}
+          label="إجمالي الطلبات"
+          value={orders.length}
+          sub="جميع الأوقات"
+          color="purple"
+        />
+      </div>
+
+      {/* Tanker Size Breakdown Banner */}
+      <div className="p-4 rounded-2xl bg-teal-950/30 border border-teal-500/20 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm">
+        <span className="font-bold text-teal-300 flex items-center gap-1.5">
+          <Droplets size={16} />
+          <span>توزيع أحجام الوايت المسجلة:</span>
+        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {Object.entries(sizeBreakdown).map(([name, data]) => (
+            <span
+              key={name}
+              className="px-3 py-1 rounded-xl bg-white/5 border border-white/8 text-white font-medium flex items-center gap-1.5"
+            >
+              <span className="text-teal-400 font-bold">{data.count}x</span>
+              <span>{name}:</span>
+              <span className="text-amber-300 font-bold">{formatCurrency(data.revenue)}</span>
+            </span>
+          ))}
+          {Object.keys(sizeBreakdown).length === 0 && (
+            <span className="text-gray-400">لا توجد طلبات مسجلة بعد</span>
+          )}
+        </div>
+      </div>
+
+      {/* Subtab Toggle: Orders vs Tanker Sizes */}
+      <div className="flex items-center justify-between border-b border-white/8 pb-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveSubTab('orders')}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+              activeSubTab === 'orders'
+                ? 'bg-teal-500 text-slate-950 shadow-lg shadow-teal-500/20'
+                : 'glass text-gray-400 hover:text-white'
+            }`}
+          >
+            طلبات التوصيل ({orders.length})
+          </button>
+          <button
+            onClick={() => setActiveSubTab('sizes')}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+              activeSubTab === 'sizes'
+                ? 'bg-teal-500 text-slate-950 shadow-lg shadow-teal-500/20'
+                : 'glass text-gray-400 hover:text-white'
+            }`}
+          >
+            إدارة الأحجام والأسعار ({sizes.length})
+          </button>
+        </div>
+
+        {activeSubTab === 'sizes' && (
+          <button
+            onClick={() => {
+              setEditingSizeId(null)
+              setSizeForm({ name: '', capacity_label: '', price: '', display_order: '1', is_active: true })
+              setShowSizeModal(true)
+            }}
+            className="btn-primary text-xs py-2 px-3 flex items-center gap-1.5"
+          >
+            <Plus size={14} />
+            <span>إضافة حجم وايت جديد</span>
+          </button>
+        )}
+      </div>
+
+      {/* ── Subtab 1: Live Orders Table ── */}
+      {activeSubTab === 'orders' && (
+        <div className="space-y-4">
+          {/* Search & Filter Bar */}
+          <div className="card p-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="relative flex-1 min-w-[240px]">
+              <input
+                type="text"
+                placeholder="البحث بالاسم، الجوال، الحي، أو الحجم..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="input-field pr-9 min-h-[42px] text-xs sm:text-sm"
+              />
+              <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              {[
+                { id: 'all', label: 'الكل' },
+                { id: 'new', label: 'جديد' },
+                { id: 'dispatched', label: 'جاري التوصيل' },
+                { id: 'delivered', label: 'تم التفريغ' },
+                { id: 'cancelled', label: 'ملغي' },
+              ].map(st => (
+                <button
+                  key={st.id}
+                  onClick={() => setStatusFilter(st.id)}
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+                    statusFilter === st.id
+                      ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40'
+                      : 'glass text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="card overflow-hidden border border-white/10 shadow-xl">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full text-right text-xs sm:text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 bg-white/3 text-gray-400 text-xs">
+                    <th className="p-3.5">#</th>
+                    <th className="p-3.5">العميل والتواصل</th>
+                    <th className="p-3.5">حجم الوايت والسعر</th>
+                    <th className="p-3.5">الحي والعنوان</th>
+                    <th className="p-3.5">نوع الخزان</th>
+                    <th className="p-3.5">موقع الـ GPS</th>
+                    <th className="p-3.5">الدفع</th>
+                    <th className="p-3.5">الحالة</th>
+                    <th className="p-3.5 text-center">الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {filteredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-12 text-center text-gray-500">
+                        لا توجد طلبات مطابقة للبحث
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredOrders.map((order, idx) => {
+                      const cfg = WATER_STATUS_CONFIG[order.status] || WATER_STATUS_CONFIG.new
+                      return (
+                        <tr key={order.id} className="hover:bg-white/3 transition-colors">
+                          <td className="p-3.5 font-mono text-gray-500 text-xs">
+                            #{order.id.slice(0, 6)}
+                          </td>
+                          <td className="p-3.5">
+                            <p className="font-bold text-white">{order.customer_name}</p>
+                            <p className="font-mono text-gray-400 text-xs mt-0.5" dir="ltr">
+                              {order.customer_phone}
+                            </p>
+                          </td>
+                          <td className="p-3.5">
+                            <p className="font-semibold text-teal-300">{order.tanker_size_name}</p>
+                            <p className="font-bold text-amber-300 text-xs">
+                              {formatCurrency(order.tanker_price)}
+                            </p>
+                          </td>
+                          <td className="p-3.5">
+                            <p className="font-medium text-white">{order.district}</p>
+                            {order.street_address && (
+                              <p className="text-gray-400 text-[11px] truncate max-w-[140px]" title={order.street_address}>
+                                {order.street_address}
+                              </p>
+                            )}
+                          </td>
+                          <td className="p-3.5">
+                            <span className="px-2 py-0.5 rounded bg-white/5 text-gray-300 text-xs">
+                              خزان {order.tank_type}
+                            </span>
+                          </td>
+                          <td className="p-3.5">
+                            {order.google_maps_url ? (
+                              <a
+                                href={order.google_maps_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-teal-400 hover:text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 px-2.5 py-1 rounded-lg border border-teal-500/20 transition-colors"
+                              >
+                                <Navigation size={12} />
+                                <span>الخريطة ↗</span>
+                              </a>
+                            ) : (
+                              <span className="text-gray-500 text-xs">يدوي</span>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-xs text-gray-300">
+                            {order.payment_method === 'cash' ? 'نقداً' : order.payment_method === 'pos_on_delivery' ? 'شبكة مدى' : 'تحويل بنكي'}
+                          </td>
+                          <td className="p-3.5">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${cfg.badgeClass}`}>
+                              {cfg.label}
+                            </span>
+                          </td>
+                          <td className="p-3.5">
+                            <div className="flex items-center justify-center gap-2">
+                              {/* One-click status change selector */}
+                              <select
+                                value={order.status}
+                                disabled={updatingOrderId === order.id}
+                                onChange={(e) => handleUpdateStatus(order.id, e.target.value as any)}
+                                className="bg-slate-900 border border-white/15 text-white text-xs rounded-lg px-2 py-1.5 focus:border-teal-400 focus:outline-none cursor-pointer"
+                              >
+                                <option value="new">جديد</option>
+                                <option value="dispatched">جاري التوصيل</option>
+                                <option value="delivered">تم التفريغ والدفع</option>
+                                <option value="cancelled">إلغاء الطلب</option>
+                              </select>
+
+                              {/* WhatsApp Dispatch Button */}
+                              <a
+                                href={generateWhatsAppLink(order.customer_phone, getDriverWhatsAppMsg(order))}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="glass p-2 rounded-xl text-green-400 hover:text-green-300 hover:bg-green-500/10 transition-colors shrink-0"
+                                title="إرسال تفاصيل الطلب للسائق أو العميل بالواتساب"
+                              >
+                                <MessageCircle size={15} />
+                              </a>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Subtab 2: Tanker Sizes & Pricing Management ── */}
+      {activeSubTab === 'sizes' && (
+        <div className="space-y-4">
+          <div className="card overflow-hidden border border-white/10 shadow-xl">
+            <div className="p-4 border-b border-white/10 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-white text-base">قائمة أحجام الوايت وأسعار التوصيل</h4>
+                <p className="text-xs text-gray-400">تحكم بالأسعار والسعات وإتاحة الأحجام للعملاء</p>
+              </div>
+            </div>
+
+            <div className="divide-y divide-white/5">
+              {sizes.map((sz) => (
+                <div key={sz.id} className="p-4 sm:p-5 flex items-center justify-between gap-4 hover:bg-white/3 transition-colors">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🚚</span>
+                      <h5 className="font-bold text-white text-base">{sz.name}</h5>
+                      {!sz.is_active && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/20">
+                          معطّل
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      السعة: <span className="text-teal-300 font-semibold">{sz.capacity_label}</span> • الترتيب: {sz.display_order}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <span className="text-xl font-black text-amber-300">
+                      {formatCurrency(sz.price)}
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => startEditSize(sz)}
+                        className="glass p-2 rounded-xl text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
+                        title="تعديل السعر والبيانات"
+                      >
+                        <Edit3 size={15} />
+                      </button>
+
+                      <button
+                        onClick={() => toggleSizeActive(sz)}
+                        className={`glass p-2 rounded-xl transition-colors ${
+                          sz.is_active ? 'hover:bg-red-500/10 text-emerald-400' : 'hover:bg-emerald-500/10 text-gray-500'
+                        }`}
+                        title={sz.is_active ? 'تعطيل الحجم' : 'تفعيل الحجم'}
+                      >
+                        {sz.is_active ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit Tanker Size Modal */}
+      {showSizeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="card glass-strong max-w-md w-full p-6 border border-teal-500/30 shadow-2xl space-y-5 animate-scale-in">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <h3 className="font-bold text-white text-base">
+                {editingSizeId ? 'تعديل حجم الوايت والسعر' : 'إضافة حجم وايت جديد'}
+              </h3>
+              <button
+                onClick={() => setShowSizeModal(false)}
+                className="glass p-1.5 rounded-lg text-gray-400 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSize} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5">اسم الحجم</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: وايت عايدي (حجم متوسط)"
+                  value={sizeForm.name}
+                  onChange={e => setSizeForm(f => ({ ...f, name: e.target.value }))}
+                  className="input-field min-h-[44px] text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5">وصف السعة (بالطن أو اللتر)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: 12 طن - 12,000 لتر"
+                  value={sizeForm.capacity_label}
+                  onChange={e => setSizeForm(f => ({ ...f, capacity_label: e.target.value }))}
+                  className="input-field min-h-[44px] text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">السعر (ر.س)</label>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    value={sizeForm.price}
+                    onChange={e => setSizeForm(f => ({ ...f, price: e.target.value }))}
+                    className="input-field min-h-[44px] text-sm font-bold text-amber-300"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">ترتيب العرض</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={sizeForm.display_order}
+                    onChange={e => setSizeForm(f => ({ ...f, display_order: e.target.value }))}
+                    className="input-field min-h-[44px] text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="size_active"
+                  checked={sizeForm.is_active}
+                  onChange={e => setSizeForm(f => ({ ...f, is_active: e.target.checked }))}
+                  className="w-4 h-4 rounded text-teal-500"
+                />
+                <label htmlFor="size_active" className="text-xs text-gray-300 cursor-pointer">
+                  تفعيل الحجم وإتاحته للعملاء فوراً
+                </label>
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSizeModal(false)}
+                  className="btn-ghost w-1/2 py-2.5 text-xs font-medium"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSize}
+                  className="btn-primary w-1/2 py-2.5 text-xs font-bold"
+                >
+                  {savingSize ? <Loader2 size={15} className="animate-spin" /> : editingSizeId ? 'حفظ التعديل' : 'إضافة الحجم'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
 // MAIN ADMIN PAGE
 // ─────────────────────────────────────────────
-type Tab = 'overview' | 'pending' | 'bookings' | 'properties' | 'addons' | 'settings'
+type Tab = 'overview' | 'pending' | 'bookings' | 'water' | 'properties' | 'addons' | 'settings'
 
 const AdminPage: React.FC = () => {
   const { profile } = useAuth()
@@ -1124,6 +1765,8 @@ const AdminPage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [bookings, setBookings] = useState<Booking[]>([])
+  const [waterOrders, setWaterOrders] = useState<WaterOrder[]>([])
+  const [waterSizes, setWaterSizes] = useState<WaterTankerSize[]>(DEFAULT_WATER_SIZES)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [properties, setProperties] = useState<Property[]>([])
   const [addons, setAddons] = useState<Addon[]>([])
@@ -1156,7 +1799,7 @@ const AdminPage: React.FC = () => {
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [{ data: b }, { data: s }, { data: p }, { data: a }] = await Promise.all([
+    const [{ data: b }, { data: s }, { data: p }, { data: a }, { data: wo }, { data: ws }] = await Promise.all([
       supabase
         .from('bookings')
         .select('*, properties(name), booking_addons(*, addons(*))')
@@ -1164,11 +1807,16 @@ const AdminPage: React.FC = () => {
       supabase.from('resort_settings').select('*').eq('id', 1).single(),
       supabase.from('properties').select('*').order('name'),
       supabase.from('addons').select('*').order('name'),
+      supabase.from('water_orders').select('*').order('created_at', { ascending: false }),
+      supabase.from('water_tanker_sizes').select('*').order('display_order', { ascending: true }),
     ])
     if (b) setBookings(b as any)
     if (s) setSettings(s)
     if (p) setProperties(p)
     if (a) setAddons(a)
+    if (wo) setWaterOrders(wo as any)
+    if (ws && ws.length > 0) setWaterSizes(ws as any)
+    else setWaterSizes(DEFAULT_WATER_SIZES)
     setLoading(false)
   }, [])
 
@@ -1274,10 +1922,15 @@ const AdminPage: React.FC = () => {
     </div>
   )
 
+  const newWaterOrdersCount = useMemo(() => {
+    return waterOrders.filter(o => o.status === 'new').length
+  }, [waterOrders])
+
   const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview', label: 'نظرة عامة', icon: <BarChart3 size={16} /> },
     { id: 'pending', label: 'بانتظار الإجراء', icon: <Clock size={16} />, badge: allPending.length },
     { id: 'bookings', label: 'جميع الحجوزات', icon: <CalendarCheck size={16} /> },
+    { id: 'water', label: 'وايتات الماء 💧', icon: <Droplets size={16} className="text-teal-400" />, badge: newWaterOrdersCount },
     { id: 'properties', label: 'الوحدات', icon: <Home size={16} /> },
     { id: 'addons', label: 'الإضافات', icon: <Zap size={16} /> },
     { id: 'settings', label: 'الإعدادات', icon: <Settings size={16} /> },
@@ -1604,6 +2257,15 @@ const AdminPage: React.FC = () => {
         )}
 
         {/* OTHER TABS */}
+        {activeTab === 'water' && (
+          <WaterOrdersTab
+            orders={waterOrders}
+            sizes={waterSizes}
+            onRefresh={fetchAll}
+            showToast={showToast}
+          />
+        )}
+
         {activeTab === 'properties' && (
           <PropertiesTab properties={properties} onRefresh={fetchAll} />
         )}

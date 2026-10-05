@@ -92,6 +92,88 @@ export type Database = {
           unit_price: number
         }
       }
+      water_tanker_sizes: {
+        Row: {
+          id: string
+          name: string
+          capacity_label: string
+          price: number
+          is_active: boolean
+          display_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          capacity_label: string
+          price: number
+          is_active?: boolean
+          display_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          capacity_label?: string
+          price?: number
+          is_active?: boolean
+          display_order?: number
+          created_at?: string
+        }
+      }
+      water_orders: {
+        Row: {
+          id: string
+          customer_id: string | null
+          customer_name: string
+          customer_phone: string
+          tanker_size_id: string
+          tanker_size_name: string
+          tanker_price: number
+          district: string
+          street_address: string | null
+          google_maps_url: string | null
+          tank_type: 'أرضي' | 'علوي' | 'كلاهما'
+          payment_method: 'cash' | 'pos_on_delivery' | 'bank_transfer'
+          status: 'new' | 'dispatched' | 'delivered' | 'cancelled'
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          customer_id?: string | null
+          customer_name: string
+          customer_phone: string
+          tanker_size_id: string
+          tanker_size_name: string
+          tanker_price: number
+          district: string
+          street_address?: string | null
+          google_maps_url?: string | null
+          tank_type?: 'أرضي' | 'علوي' | 'كلاهما'
+          payment_method: 'cash' | 'pos_on_delivery' | 'bank_transfer'
+          status?: 'new' | 'dispatched' | 'delivered' | 'cancelled'
+          notes?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          customer_id?: string | null
+          customer_name?: string
+          customer_phone?: string
+          tanker_size_id?: string
+          tanker_size_name?: string
+          tanker_price?: number
+          district?: string
+          street_address?: string | null
+          google_maps_url?: string | null
+          tank_type?: 'أرضي' | 'علوي' | 'كلاهما'
+          payment_method?: 'cash' | 'pos_on_delivery' | 'bank_transfer'
+          status?: 'new' | 'dispatched' | 'delivered' | 'cancelled'
+          notes?: string | null
+          created_at?: string
+        }
+      }
     }
   }
 }
