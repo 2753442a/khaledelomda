@@ -13,11 +13,12 @@ import {
   AlertTriangle, Shield, ChevronRight, ChevronLeft, Home,
   CheckCircle2, XCircle, Banknote, Eye, EyeOff, Info, Phone, Calendar,
   CreditCard, Search, Filter, AlertCircle, FileText, CheckCircle,
-  Droplets, Navigation, MapPin, Truck, ExternalLink, Palmtree, Sparkles, Image as ImageIcon
+  Droplets, Navigation, MapPin, Truck, ExternalLink, Palmtree, Sparkles, Image as ImageIcon,
+  Fuel, Wrench, TrendingUp, TrendingDown, Send, CalendarDays, Receipt
 } from 'lucide-react'
 import { Facility, DEFAULT_FACILITIES } from '../components/Facilities'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval,
-  getDay, addMonths, subMonths, parseISO, isSameDay } from 'date-fns'
+  getDay, addMonths, subMonths, parseISO, isSameDay, subDays, startOfWeek } from 'date-fns'
 import { ar } from 'date-fns/locale'
 
 // ─────────────────────────────────────────────
@@ -137,6 +138,27 @@ const DEFAULT_WATER_SIZES: WaterTankerSize[] = [
   { id: '1', name: 'وايت عايدي (حجم متوسط)', capacity_label: '12 طن - 12,000 لتر', price: 120, is_active: true, display_order: 1 },
   { id: '2', name: 'وايت تريلا (حجم كبير)', capacity_label: '30 طن - 30,000 لتر', price: 250, is_active: true, display_order: 2 },
 ]
+
+export type ExpenseCategory = 'ديزل' | 'صيانة وقطع غيار' | 'زيوت وغسيل' | 'أخرى'
+
+export interface WaterExpense {
+  id: string
+  expense_date: string
+  category: ExpenseCategory
+  amount: number
+  notes: string | null
+  receipt_image_url?: string | null
+  created_at?: string
+}
+
+export interface WaterManualTrip {
+  id: string
+  trip_date: string
+  tanker_size: string
+  amount: number
+  notes: string | null
+  created_at?: string
+}
 
 // ─────────────────────────────────────────────
 // STATUS BADGES & CONFIG
@@ -1156,9 +1178,10 @@ interface WaterOrdersTabProps {
   sizes: WaterTankerSize[]
   onRefresh: () => void
   showToast: (msg: string, type?: 'success' | 'error') => void
+  onNavigateToLedger?: () => void
 }
 
-const WaterOrdersTab: React.FC<WaterOrdersTabProps> = ({ orders, sizes, onRefresh, showToast }) => {
+const WaterOrdersTab: React.FC<WaterOrdersTabProps> = ({ orders, sizes, onRefresh, showToast, onNavigateToLedger }) => {
   const [activeSubTab, setActiveSubTab] = useState<'orders' | 'sizes'>('orders')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -1394,9 +1417,9 @@ ${o.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${o.google_maps_u
         </div>
       </div>
 
-      {/* Subtab Toggle: Orders vs Tanker Sizes */}
+      {/* Subtab Toggle: Orders vs Tanker Sizes vs Ledger */}
       <div className="flex items-center justify-between border-b border-white/8 pb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setActiveSubTab('orders')}
             className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
@@ -1417,6 +1440,15 @@ ${o.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${o.google_maps_u
           >
             إدارة الأحجام والأسعار ({sizes.length})
           </button>
+          {onNavigateToLedger && (
+            <button
+              onClick={onNavigateToLedger}
+              className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-amber-500/10 text-amber-300 border border-amber-500/25 hover:bg-amber-500/20 transition-all flex items-center gap-1.5"
+            >
+              <BarChart3 size={15} />
+              <span>سجل وحسابات الوايت 📊</span>
+            </button>
+          )}
         </div>
 
         {activeSubTab === 'sizes' && (
@@ -1825,6 +1857,1194 @@ ${o.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${o.google_maps_u
                   className="btn-primary w-1/2 py-2.5 text-xs font-bold"
                 >
                   {savingSize ? <Loader2 size={15} className="animate-spin" /> : editingSizeId ? 'حفظ التعديل' : 'إضافة الحجم'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// WATER LEDGER & EXPENSES TAB (سجل وحسابات الوايت 📊)
+// ─────────────────────────────────────────────
+interface WaterLedgerTabProps {
+  orders: WaterOrder[]
+  sizes: WaterTankerSize[]
+  settings: Settings | null
+  showToast: (msg: string, type?: 'success' | 'error') => void
+  onNavigateToWaterOrders?: () => void
+}
+
+const EXPENSE_CATEGORIES: { id: ExpenseCategory; label: string; icon: string; badgeClass: string }[] = [
+  { id: 'ديزل', label: 'ديزل', icon: '⛽', badgeClass: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
+  { id: 'صيانة وقطع غيار', label: 'صيانة وقطع غيار', icon: '🔧', badgeClass: 'bg-blue-500/15 text-blue-300 border-blue-500/30' },
+  { id: 'زيوت وغسيل', label: 'زيوت وغسيل', icon: '🛢️', badgeClass: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' },
+  { id: 'أخرى', label: 'أخرى ونثريات', icon: '📦', badgeClass: 'bg-slate-500/15 text-slate-300 border-slate-500/30' },
+]
+
+const WaterLedgerTab: React.FC<WaterLedgerTabProps> = ({
+  orders,
+  sizes,
+  settings,
+  showToast,
+  onNavigateToWaterOrders,
+}) => {
+  const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd')
+  const thisWeekStartStr = format(startOfWeek(new Date(), { weekStartsOn: 6 }), 'yyyy-MM-dd')
+  const thisMonthStartStr = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+
+  const [dateFilterType, setDateFilterType] = useState<'today' | 'yesterday' | 'week' | 'month' | 'custom'>('today')
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr)
+
+  const [expenses, setExpenses] = useState<WaterExpense[]>([])
+  const [manualTrips, setManualTrips] = useState<WaterManualTrip[]>([])
+  const [loading, setLoading] = useState(false)
+  const [needsMigration, setNeedsMigration] = useState(false)
+  const [activeSubView, setActiveSubView] = useState<'expenses' | 'trips'>('expenses')
+
+  // Add Expense Modal
+  const [showExpenseModal, setShowExpenseModal] = useState(false)
+  const [savingExpense, setSavingExpense] = useState(false)
+  const [expenseForm, setExpenseForm] = useState<{
+    expense_date: string
+    category: ExpenseCategory
+    amount: string
+    notes: string
+  }>({
+    expense_date: todayStr,
+    category: 'ديزل',
+    amount: '',
+    notes: '',
+  })
+
+  // Add Manual Trip Modal
+  const [showTripModal, setShowTripModal] = useState(false)
+  const [savingTrip, setSavingTrip] = useState(false)
+  const [tripForm, setTripForm] = useState<{
+    trip_date: string
+    tanker_size: string
+    amount: string
+    notes: string
+  }>({
+    trip_date: todayStr,
+    tanker_size: sizes[0]?.name || 'وايت عايدي (حجم متوسط)',
+    amount: String(sizes[0]?.price || 120),
+    notes: '',
+  })
+
+  // Fetch Ledger data from Supabase
+  const fetchLedgerData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [{ data: expData, error: expError }, { data: tripsData, error: tripsError }] = await Promise.all([
+        supabase.from('water_expenses').select('*').order('created_at', { ascending: false }),
+        supabase.from('water_manual_trips').select('*').order('created_at', { ascending: false }),
+      ])
+
+      if (expError) {
+        if (expError.message?.includes('schema cache') || expError.message?.includes('does not exist') || expError.code === '42P01') {
+          setNeedsMigration(true)
+        } else {
+          console.warn('Expenses query notice:', expError.message)
+        }
+      } else if (expData) {
+        setExpenses(expData as WaterExpense[])
+        setNeedsMigration(false)
+      }
+
+      if (tripsError) {
+        if (tripsError.message?.includes('schema cache') || tripsError.message?.includes('does not exist') || tripsError.code === '42P01') {
+          setNeedsMigration(true)
+        }
+      } else if (tripsData) {
+        setManualTrips(tripsData as WaterManualTrip[])
+      }
+    } catch (err: any) {
+      console.warn('Could not fetch water ledger tables:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchLedgerData()
+  }, [fetchLedgerData])
+
+  // Calculate Active Date Range
+  const { startDate, endDate, dateTitle } = useMemo(() => {
+    if (dateFilterType === 'today') {
+      return { startDate: todayStr, endDate: todayStr, dateTitle: 'اليوم' }
+    }
+    if (dateFilterType === 'yesterday') {
+      return { startDate: yesterdayStr, endDate: yesterdayStr, dateTitle: 'أمس' }
+    }
+    if (dateFilterType === 'week') {
+      return { startDate: thisWeekStartStr, endDate: todayStr, dateTitle: 'هذا الأسبوع' }
+    }
+    if (dateFilterType === 'month') {
+      return { startDate: thisMonthStartStr, endDate: todayStr, dateTitle: 'هذا الشهر' }
+    }
+    return { startDate: selectedDate, endDate: selectedDate, dateTitle: selectedDate }
+  }, [dateFilterType, selectedDate, todayStr, yesterdayStr, thisWeekStartStr, thisMonthStartStr])
+
+  // Filter Data
+  const filteredDeliveredOrders = useMemo(() => {
+    return orders.filter(o => {
+      if (o.status !== 'delivered') return false
+      const d = o.created_at ? o.created_at.slice(0, 10) : ''
+      return d >= startDate && d <= endDate
+    })
+  }, [orders, startDate, endDate])
+
+  const filteredManualTrips = useMemo(() => {
+    return manualTrips.filter(t => t.trip_date >= startDate && t.trip_date <= endDate)
+  }, [manualTrips, startDate, endDate])
+
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter(e => e.expense_date >= startDate && e.expense_date <= endDate)
+  }, [expenses, startDate, endDate])
+
+  // Financial Computations
+  const onlineRevenue = useMemo(() => {
+    return filteredDeliveredOrders.reduce((sum, o) => sum + Number(o.tanker_price || 0), 0)
+  }, [filteredDeliveredOrders])
+
+  const manualRevenue = useMemo(() => {
+    return filteredManualTrips.reduce((sum, t) => sum + Number(t.amount || 0), 0)
+  }, [filteredManualTrips])
+
+  const totalTrips = filteredDeliveredOrders.length + filteredManualTrips.length
+  const totalIncome = onlineRevenue + manualRevenue
+
+  const dieselTotal = useMemo(() => {
+    return filteredExpenses
+      .filter(e => e.category === 'ديزل')
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+  }, [filteredExpenses])
+
+  const maintenanceTotal = useMemo(() => {
+    return filteredExpenses
+      .filter(e => e.category === 'صيانة وقطع غيار')
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+  }, [filteredExpenses])
+
+  const oilsTotal = useMemo(() => {
+    return filteredExpenses
+      .filter(e => e.category === 'زيوت وغسيل')
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+  }, [filteredExpenses])
+
+  const otherExpensesTotal = useMemo(() => {
+    return filteredExpenses
+      .filter(e => e.category === 'أخرى')
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+  }, [filteredExpenses])
+
+  const otherCombinedTotal = maintenanceTotal + oilsTotal + otherExpensesTotal
+  const totalExpenses = dieselTotal + otherCombinedTotal
+  const netProfit = totalIncome - totalExpenses
+
+  // WhatsApp Closing Summary
+  const handleSendWhatsAppClosing = () => {
+    let formattedDateText = ''
+    if (dateFilterType === 'today') {
+      formattedDateText = `${formatArabicDate(todayStr)}`
+    } else if (dateFilterType === 'yesterday') {
+      formattedDateText = `${formatArabicDate(yesterdayStr)}`
+    } else if (dateFilterType === 'week') {
+      formattedDateText = `هذا الأسبوع (من ${thisWeekStartStr} إلى ${todayStr})`
+    } else if (dateFilterType === 'month') {
+      formattedDateText = `هذا الشهر (من ${thisMonthStartStr} إلى ${todayStr})`
+    } else {
+      formattedDateText = `${formatArabicDate(selectedDate)}`
+    }
+
+    const message = `🚚 *تقرير الإغلاق اليومي لوايت الماء* 💧
+📅 *التاريخ:* ${formattedDateText}
+ــــــــــــــــــــــــــــــــــــــــ
+🚛 *عدد الردود:* ${totalTrips} رد
+💵 *إجمالي الدخل:* ${totalIncome.toLocaleString('en-US')} ر.س
+⛽ *مصروف الديزل:* ${dieselTotal.toLocaleString('en-US')} ر.س
+🔧 *مصروف الصيانة والنثريات:* ${otherCombinedTotal.toLocaleString('en-US')} ر.س
+📉 *إجمالي المصروفات:* ${totalExpenses.toLocaleString('en-US')} ر.س
+ــــــــــــــــــــــــــــــــــــــــ
+💰 *صافي ربح اليوم:* ${netProfit.toLocaleString('en-US')} ر.س
+🌟 إغلاق تشغيلي معتمد`
+
+    const targetPhone = settings?.contact_whatsapp || settings?.contact_phone || ''
+    const waUrl = targetPhone
+      ? generateWhatsAppLink(targetPhone, message)
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
+    window.open(waUrl, '_blank')
+  }
+
+  // Handle Save Expense
+  const handleSaveExpense = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const numAmount = Number(expenseForm.amount)
+    if (!numAmount || numAmount <= 0) {
+      showToast('⚠️ يرجى إدخال مبلغ صحيح أكبر من الصفر', 'error')
+      return
+    }
+    setSavingExpense(true)
+
+    const tempId = 'temp-' + Date.now()
+    const newRecord: WaterExpense = {
+      id: tempId,
+      expense_date: expenseForm.expense_date,
+      category: expenseForm.category,
+      amount: numAmount,
+      notes: expenseForm.notes.trim() || null,
+      created_at: new Date().toISOString(),
+    }
+
+    // Optimistic update
+    setExpenses(prev => [newRecord, ...prev])
+    setShowExpenseModal(false)
+    setExpenseForm({
+      expense_date: selectedDate,
+      category: 'ديزل',
+      amount: '',
+      notes: '',
+    })
+
+    try {
+      const { data, error } = await supabase
+        .from('water_expenses')
+        .insert([{
+          expense_date: newRecord.expense_date,
+          category: newRecord.category,
+          amount: newRecord.amount,
+          notes: newRecord.notes,
+        }])
+        .select()
+
+      if (error) {
+        setExpenses(prev => prev.filter(x => x.id !== tempId))
+        showToast('⚠️ تعذر تسجيل المصروف: ' + error.message, 'error')
+      } else if (data && data[0]) {
+        setExpenses(prev => [data[0] as WaterExpense, ...prev.filter(x => x.id !== tempId)])
+        showToast('تم تسجيل المصروف بنجاح ✅')
+      }
+    } catch (err: any) {
+      setExpenses(prev => prev.filter(x => x.id !== tempId))
+      showToast('⚠️ خطأ في الاتصال: ' + err.message, 'error')
+    } finally {
+      setSavingExpense(false)
+    }
+  }
+
+  // Handle Save Manual Trip
+  const handleSaveManualTrip = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const numAmount = Number(tripForm.amount)
+    if (isNaN(numAmount) || numAmount < 0) {
+      showToast('⚠️ يرجى إدخال مبلغ صحيح', 'error')
+      return
+    }
+    setSavingTrip(true)
+
+    const tempId = 'temp-trip-' + Date.now()
+    const newTrip: WaterManualTrip = {
+      id: tempId,
+      trip_date: tripForm.trip_date,
+      tanker_size: tripForm.tanker_size,
+      amount: numAmount,
+      notes: tripForm.notes.trim() || null,
+      created_at: new Date().toISOString(),
+    }
+
+    // Optimistic update
+    setManualTrips(prev => [newTrip, ...prev])
+    setShowTripModal(false)
+    setTripForm({
+      trip_date: selectedDate,
+      tanker_size: sizes[0]?.name || 'وايت عايدي (حجم متوسط)',
+      amount: String(sizes[0]?.price || 120),
+      notes: '',
+    })
+
+    try {
+      const { data, error } = await supabase
+        .from('water_manual_trips')
+        .insert([{
+          trip_date: newTrip.trip_date,
+          tanker_size: newTrip.tanker_size,
+          amount: newTrip.amount,
+          notes: newTrip.notes,
+        }])
+        .select()
+
+      if (error) {
+        setManualTrips(prev => prev.filter(x => x.id !== tempId))
+        showToast('⚠️ تعذر تسجيل الرد: ' + error.message, 'error')
+      } else if (data && data[0]) {
+        setManualTrips(prev => [data[0] as WaterManualTrip, ...prev.filter(x => x.id !== tempId)])
+        showToast('تم تسجيل الرد المباشر بنجاح ✅')
+      }
+    } catch (err: any) {
+      setManualTrips(prev => prev.filter(x => x.id !== tempId))
+      showToast('⚠️ خطأ في الاتصال: ' + err.message, 'error')
+    } finally {
+      setSavingTrip(false)
+    }
+  }
+
+  // Handle Delete Expense
+  const handleDeleteExpense = async (id: string) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذا المصروف؟')) return
+    const oldList = [...expenses]
+    setExpenses(prev => prev.filter(e => e.id !== id))
+    try {
+      const { error } = await supabase.from('water_expenses').delete().eq('id', id)
+      if (error) {
+        setExpenses(oldList)
+        showToast('⚠️ تعذر حذف المصروف: ' + error.message, 'error')
+      } else {
+        showToast('تم حذف المصروف بنجاح')
+      }
+    } catch (err: any) {
+      setExpenses(oldList)
+      showToast('⚠️ خطأ في الاتصال', 'error')
+    }
+  }
+
+  // Handle Delete Manual Trip
+  const handleDeleteManualTrip = async (id: string) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذا الرد المباشر؟')) return
+    const oldList = [...manualTrips]
+    setManualTrips(prev => prev.filter(t => t.id !== id))
+    try {
+      const { error } = await supabase.from('water_manual_trips').delete().eq('id', id)
+      if (error) {
+        setManualTrips(oldList)
+        showToast('⚠️ تعذر حذف الرد: ' + error.message, 'error')
+      } else {
+        showToast('تم حذف الرد المباشر بنجاح')
+      }
+    } catch (err: any) {
+      setManualTrips(oldList)
+      showToast('⚠️ خطأ في الاتصال', 'error')
+    }
+  }
+
+  // Copy Migration SQL
+  const copyMigrationSql = () => {
+    const sql = `-- 1. Create Water Expenses Table
+create table if not exists public.water_expenses (
+  id uuid primary key default gen_random_uuid(),
+  expense_date date not null default current_date,
+  category text not null check (category in ('ديزل', 'صيانة وقطع غيار', 'زيوت وغسيل', 'أخرى')),
+  amount numeric not null check (amount > 0),
+  notes text,
+  receipt_image_url text,
+  created_at timestamptz default now()
+);
+
+alter table public.water_expenses enable row level security;
+drop policy if exists "Admin manage water expenses" on public.water_expenses;
+create policy "Admin manage water expenses" on public.water_expenses for all using (public.is_admin());
+
+create table if not exists public.water_manual_trips (
+  id uuid primary key default gen_random_uuid(),
+  trip_date date not null default current_date,
+  tanker_size text not null default 'عايدي',
+  amount numeric not null check (amount >= 0),
+  notes text,
+  created_at timestamptz default now()
+);
+
+alter table public.water_manual_trips enable row level security;
+drop policy if exists "Admin manage manual trips" on public.water_manual_trips;
+create policy "Admin manage manual trips" on public.water_manual_trips for all using (public.is_admin());`
+
+    navigator.clipboard.writeText(sql)
+    showToast('تم نسخ كود SQL بنجاح! الصقه في Supabase SQL Editor واضغط Run ✅')
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* ── Migration Alert Banner (If tables don't exist yet) ── */}
+      {needsMigration && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="text-amber-400 shrink-0" size={24} />
+            <div>
+              <p className="text-sm font-bold text-white">تنبيه قاعدة البيانات: يلزم إنشاء جداول السجل المالي والمصروفات</p>
+              <p className="text-xs text-amber-300/80 mt-0.5">
+                قم بتشغيل ملف <code className="bg-black/40 px-1.5 py-0.5 rounded text-amber-200">supabase/water_ledger_migration.sql</code> في محرر Supabase لتفعيل الحفظ الدائم.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={copyMigrationSql}
+            className="btn-primary py-2 px-4 text-xs font-bold shrink-0 flex items-center justify-center gap-2"
+          >
+            <span>📋 نسخ كود SQL للتهيئة</span>
+          </button>
+        </div>
+      )}
+
+      {/* ── SECTION A: Date Filter & Control Bar ── */}
+      <div className="card p-4 sm:p-5 border border-white/10 shadow-xl space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {/* Right: Date Picker & Quick Filter Buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900 border border-white/10">
+              <button
+                type="button"
+                onClick={() => {
+                  setDateFilterType('today')
+                  setSelectedDate(todayStr)
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  dateFilterType === 'today'
+                    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                اليوم
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDateFilterType('yesterday')
+                  setSelectedDate(yesterdayStr)
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  dateFilterType === 'yesterday'
+                    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                أمس
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateFilterType('week')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  dateFilterType === 'week'
+                    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                هذا الأسبوع
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateFilterType('month')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  dateFilterType === 'month'
+                    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                هذا الشهر
+              </button>
+            </div>
+
+            {/* Custom Date Input */}
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => {
+                    setSelectedDate(e.target.value)
+                    setDateFilterType('custom')
+                  }}
+                  className="bg-slate-900 border border-white/10 text-white text-xs rounded-xl px-3 py-2 focus:border-emerald-400 focus:outline-none cursor-pointer"
+                />
+              </div>
+              <button
+                onClick={fetchLedgerData}
+                disabled={loading}
+                className="glass p-2 rounded-xl text-gray-400 hover:text-white transition-colors"
+                title="تحديث البيانات"
+              >
+                <RefreshCw size={15} className={loading ? 'animate-spin text-emerald-400' : ''} />
+              </button>
+            </div>
+          </div>
+
+          {/* Left: Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                setExpenseForm({
+                  expense_date: selectedDate,
+                  category: 'ديزل',
+                  amount: '',
+                  notes: '',
+                })
+                setShowExpenseModal(true)
+              }}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm shadow-lg shadow-amber-500/20 transition-all"
+            >
+              <Plus size={16} />
+              <span>تسجيل مصروف جديد</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setTripForm({
+                  trip_date: selectedDate,
+                  tanker_size: sizes[0]?.name || 'وايت عايدي (حجم متوسط)',
+                  amount: String(sizes[0]?.price || 120),
+                  notes: '',
+                })
+                setShowTripModal(true)
+              }}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-500 hover:to-teal-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm shadow-lg shadow-teal-500/20 transition-all"
+            >
+              <Truck size={16} />
+              <span>تسجيل رد مباشر</span>
+            </button>
+
+            <button
+              onClick={handleSendWhatsAppClosing}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm shadow-lg shadow-emerald-600/25 transition-all"
+              title="إرسال تقرير الإغلاق المالي للواتساب"
+            >
+              <MessageCircle size={16} />
+              <span>إرسال إغلاق اليوم لواتساب</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Selected Period Indicator */}
+        <div className="flex items-center justify-between text-xs text-gray-400 pt-2 border-t border-white/5">
+          <div className="flex items-center gap-2">
+            <CalendarDays size={14} className="text-emerald-400" />
+            <span>الفترة المحددة: <strong className="text-white">{dateTitle}</strong> {startDate !== endDate && `(من ${startDate} إلى ${endDate})`}</span>
+          </div>
+          {onNavigateToWaterOrders && (
+            <button
+              onClick={onNavigateToWaterOrders}
+              className="text-teal-400 hover:text-teal-300 font-medium flex items-center gap-1 transition-colors"
+            >
+              <span>عرض جدول الطلبات الأونلاين ({orders.length})</span>
+              <ChevronRight size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── SECTION B: Summary Financial Cards (KPIs: Clean 2x2 grid on mobile) ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* KPI 1: عدد الردود المنجزة */}
+        <div className="card p-4 sm:p-5 bg-gradient-to-br from-slate-900/90 to-teal-950/20 border border-teal-500/20 shadow-lg relative overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-400 font-medium">عدد الردود المنجزة</span>
+            <div className="w-8 h-8 rounded-xl bg-teal-500/15 text-teal-400 flex items-center justify-center">
+              <Truck size={17} />
+            </div>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-white">
+            {totalTrips.toLocaleString('en-US')} <span className="text-xs sm:text-sm font-normal text-gray-400">رد</span>
+          </p>
+          <p className="text-[11px] text-teal-300/80 mt-1 truncate">
+            {filteredDeliveredOrders.length} طلب موقع • {filteredManualTrips.length} رد يدوي
+          </p>
+        </div>
+
+        {/* KPI 2: إجمالي الدخل */}
+        <div className="card p-4 sm:p-5 bg-gradient-to-br from-slate-900/90 to-emerald-950/20 border border-emerald-500/20 shadow-lg relative overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-400 font-medium">إجمالي الدخل</span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+              <Banknote size={17} />
+            </div>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-emerald-400">
+            {formatCurrency(totalIncome)}
+          </p>
+          <p className="text-[11px] text-gray-400 mt-1 truncate">
+            {formatCurrency(onlineRevenue)} موقع + {formatCurrency(manualRevenue)} يدوي
+          </p>
+        </div>
+
+        {/* KPI 3: إجمالي المصروفات */}
+        <div className="card p-4 sm:p-5 bg-gradient-to-br from-slate-900/90 to-amber-950/20 border border-amber-500/20 shadow-lg relative overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-400 font-medium">إجمالي المصروفات</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center">
+              <TrendingDown size={17} />
+            </div>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-amber-400">
+            {formatCurrency(totalExpenses)}
+          </p>
+          <p className="text-[11px] text-amber-300/80 mt-1 truncate">
+            ديزل ({formatCurrency(dieselTotal)}) • صيانة وأخرى ({formatCurrency(otherCombinedTotal)})
+          </p>
+        </div>
+
+        {/* KPI 4: صافي الربح */}
+        <div className={`card p-4 sm:p-5 relative overflow-hidden shadow-xl transition-all ${
+          netProfit >= 0
+            ? 'bg-gradient-to-br from-emerald-950/40 via-slate-900/90 to-slate-900 border border-emerald-500/40 shadow-emerald-950/30'
+            : 'bg-gradient-to-br from-rose-950/40 via-slate-900/90 to-slate-900 border border-rose-500/40 shadow-rose-950/30'
+        }`}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-400 font-medium">صافي الربح</span>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+              netProfit >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+            }`}>
+              {netProfit >= 0 ? <TrendingUp size={17} /> : <TrendingDown size={17} />}
+            </div>
+          </div>
+          <p className={`text-2xl sm:text-3xl font-black ${netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {formatCurrency(netProfit)}
+          </p>
+          <p className="text-[11px] text-gray-400 mt-1">
+            الدخل - المصروفات ({netProfit >= 0 ? 'أرباح تشغيلية محققة 🌟' : 'عجز مؤقت ⚠️'})
+          </p>
+        </div>
+      </div>
+
+      {/* ── Categorized Expense Breakdown Chips ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 rounded-2xl bg-white/3 border border-white/8">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
+          <span className="text-base">⛽</span>
+          <div className="truncate">
+            <p className="text-[11px] text-amber-300/80 font-medium">ديزل ومحروقات</p>
+            <p className="text-xs sm:text-sm font-bold text-amber-300">{formatCurrency(dieselTotal)}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20">
+          <span className="text-base">🔧</span>
+          <div className="truncate">
+            <p className="text-[11px] text-blue-300/80 font-medium">صيانة وقطع غيار</p>
+            <p className="text-xs sm:text-sm font-bold text-blue-300">{formatCurrency(maintenanceTotal)}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
+          <span className="text-base">🛢️</span>
+          <div className="truncate">
+            <p className="text-[11px] text-cyan-300/80 font-medium">زيوت وغسيل</p>
+            <p className="text-xs sm:text-sm font-bold text-cyan-300">{formatCurrency(oilsTotal)}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-500/10 border border-slate-500/20">
+          <span className="text-base">📦</span>
+          <div className="truncate">
+            <p className="text-[11px] text-slate-300/80 font-medium">نثريات وأخرى</p>
+            <p className="text-xs sm:text-sm font-bold text-slate-300">{formatCurrency(otherExpensesTotal)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Sub-navigation: Expenses Log vs Trips Log ── */}
+      <div className="flex items-center justify-between border-b border-white/8 pb-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveSubView('expenses')}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+              activeSubView === 'expenses'
+                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                : 'glass text-gray-400 hover:text-white'
+            }`}
+          >
+            <Receipt size={15} />
+            <span>سجل المصروفات اليومية ({filteredExpenses.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubView('trips')}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+              activeSubView === 'trips'
+                ? 'bg-teal-500 text-slate-950 shadow-lg shadow-teal-500/20'
+                : 'glass text-gray-400 hover:text-white'
+            }`}
+          >
+            <Truck size={15} />
+            <span>سجل الردود والرحلات ({totalTrips})</span>
+          </button>
+        </div>
+
+        <span className="text-xs text-gray-400 hidden sm:inline">
+          {activeSubView === 'expenses' ? `إجمالي المصروفات: ${formatCurrency(totalExpenses)}` : `إجمالي الدخل: ${formatCurrency(totalIncome)}`}
+        </span>
+      </div>
+
+      {/* ── VIEW 1: EXPENSES LOG ── */}
+      {activeSubView === 'expenses' && (
+        <div className="space-y-4">
+          {/* Mobile Cards (Touch-friendly cards) */}
+          <div className="block md:hidden space-y-3">
+            {filteredExpenses.length === 0 ? (
+              <div className="card py-12 text-center text-gray-500 text-sm space-y-3">
+                <Receipt size={36} className="mx-auto text-gray-600 opacity-60" />
+                <p>لا توجد مصروفات مسجلة لهذه الفترة</p>
+                <button
+                  onClick={() => setShowExpenseModal(true)}
+                  className="btn-primary py-2 px-4 text-xs font-bold mx-auto"
+                >
+                  ➕ إضافة أول مصروف
+                </button>
+              </div>
+            ) : (
+              filteredExpenses.map((expense) => {
+                const catCfg = EXPENSE_CATEGORIES.find(c => c.id === expense.category) || EXPENSE_CATEGORIES[0]
+                return (
+                  <div key={expense.id} className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3 shadow-lg">
+                    <div className="flex items-center justify-between">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${catCfg.badgeClass}`}>
+                        <span>{catCfg.icon}</span>
+                        <span>{expense.category}</span>
+                      </span>
+                      <span className="text-base font-black text-amber-300">
+                        {formatCurrency(expense.amount)}
+                      </span>
+                    </div>
+
+                    {expense.notes && (
+                      <p className="text-xs text-slate-200 bg-white/5 p-2.5 rounded-xl border border-white/5">
+                        {expense.notes}
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-between text-[11px] text-gray-500 pt-1 border-t border-white/5">
+                      <span>📅 {formatShortDate(expense.expense_date)}</span>
+                      <button
+                        onClick={() => handleDeleteExpense(expense.id)}
+                        className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors"
+                        title="حذف المصروف"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {/* Desktop Table */}
+          <div className="hidden md:block card overflow-hidden border border-white/10 shadow-xl">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full text-right text-xs sm:text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 bg-white/3 text-gray-400 text-xs">
+                    <th className="p-3.5">التصنيف</th>
+                    <th className="p-3.5">المبلغ</th>
+                    <th className="p-3.5">البيان / ملاحظات</th>
+                    <th className="p-3.5">تاريخ المصروف</th>
+                    <th className="p-3.5 text-center">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {filteredExpenses.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-gray-500">
+                        لا توجد مصروفات مسجلة لهذه الفترة
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredExpenses.map((expense) => {
+                      const catCfg = EXPENSE_CATEGORIES.find(c => c.id === expense.category) || EXPENSE_CATEGORIES[0]
+                      return (
+                        <tr key={expense.id} className="hover:bg-white/3 transition-colors">
+                          <td className="p-3.5">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${catCfg.badgeClass}`}>
+                              <span>{catCfg.icon}</span>
+                              <span>{expense.category}</span>
+                            </span>
+                          </td>
+                          <td className="p-3.5 font-bold text-amber-300 text-sm">
+                            {formatCurrency(expense.amount)}
+                          </td>
+                          <td className="p-3.5 text-slate-300">
+                            {expense.notes || <span className="text-gray-600">—</span>}
+                          </td>
+                          <td className="p-3.5 text-xs text-gray-400">
+                            {formatShortDate(expense.expense_date)}
+                          </td>
+                          <td className="p-3.5 text-center">
+                            <button
+                              onClick={() => handleDeleteExpense(expense.id)}
+                              className="glass p-2 rounded-xl text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors"
+                              title="حذف المصروف"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── VIEW 2: TRIPS & DELIVERIES LOG ── */}
+      {activeSubView === 'trips' && (
+        <div className="space-y-6">
+          {/* Manual Trips Section */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <span>الردود اليدوية / المباشرة للسائق</span>
+                <span className="text-xs text-teal-400 font-normal">({filteredManualTrips.length} رد • {formatCurrency(manualRevenue)})</span>
+              </h4>
+              <button
+                onClick={() => setShowTripModal(true)}
+                className="btn-primary py-1.5 px-3 text-xs font-bold flex items-center gap-1"
+              >
+                <Plus size={14} />
+                <span>تسجيل رد يدوي</span>
+              </button>
+            </div>
+
+            {/* Mobile Cards for Manual Trips */}
+            <div className="block md:hidden space-y-2.5">
+              {filteredManualTrips.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-white/3 border border-dashed border-white/10 text-center text-xs text-gray-500">
+                  لا توجد ردود يدوية مسجلة لهذه الفترة
+                </div>
+              ) : (
+                filteredManualTrips.map(trip => (
+                  <div key={trip.id} className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-teal-300 flex items-center gap-1.5">
+                        <Truck size={14} />
+                        <span>{trip.tanker_size}</span>
+                      </span>
+                      <span className="text-sm font-black text-emerald-400">
+                        {formatCurrency(trip.amount)}
+                      </span>
+                    </div>
+                    {trip.notes && (
+                      <p className="text-xs text-slate-300 bg-white/5 p-2 rounded-xl">
+                        {trip.notes}
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between text-[11px] text-gray-500 pt-1 border-t border-white/5">
+                      <span>📅 {formatShortDate(trip.trip_date)}</span>
+                      <button
+                        onClick={() => handleDeleteManualTrip(trip.id)}
+                        className="text-rose-400 hover:text-rose-300 p-1"
+                        title="حذف الرد"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Desktop Table for Manual Trips */}
+            <div className="hidden md:block card overflow-hidden border border-white/10 shadow-lg">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="border-b border-white/10 bg-white/3 text-gray-400">
+                    <th className="p-3">حجم الوايت</th>
+                    <th className="p-3">المبلغ</th>
+                    <th className="p-3">البيان / ملاحظات</th>
+                    <th className="p-3">التاريخ</th>
+                    <th className="p-3 text-center">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {filteredManualTrips.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-gray-500">
+                        لا توجد ردود يدوية مسجلة لهذه الفترة
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredManualTrips.map(trip => (
+                      <tr key={trip.id} className="hover:bg-white/3">
+                        <td className="p-3 font-semibold text-teal-300">{trip.tanker_size}</td>
+                        <td className="p-3 font-bold text-emerald-400">{formatCurrency(trip.amount)}</td>
+                        <td className="p-3 text-slate-300">{trip.notes || '—'}</td>
+                        <td className="p-3 text-gray-400">{formatShortDate(trip.trip_date)}</td>
+                        <td className="p-3 text-center">
+                          <button
+                            onClick={() => handleDeleteManualTrip(trip.id)}
+                            className="p-1.5 text-rose-400 hover:text-rose-300 transition-colors"
+                            title="حذف الرد"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Delivered Online Orders Section */}
+          <div className="space-y-3 pt-4 border-t border-white/8">
+            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              <span>طلبات الموقع المفرغة والمدفوعة (Delivered)</span>
+              <span className="text-xs text-emerald-400 font-normal">({filteredDeliveredOrders.length} طلب • {formatCurrency(onlineRevenue)})</span>
+            </h4>
+
+            {/* Mobile Cards for Delivered Orders */}
+            <div className="block md:hidden space-y-2.5">
+              {filteredDeliveredOrders.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-white/3 border border-dashed border-white/10 text-center text-xs text-gray-500">
+                  لا توجد طلبات أونلاين مفرغة في هذا التاريخ
+                </div>
+              ) : (
+                filteredDeliveredOrders.map(order => (
+                  <div key={order.id} className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-white">{order.customer_name}</p>
+                        <p className="text-[11px] text-gray-400">{order.district} • {order.tanker_size_name}</p>
+                      </div>
+                      <span className="text-sm font-black text-emerald-400">
+                        {formatCurrency(order.tanker_price)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-gray-500 pt-1 border-t border-white/5">
+                      <span>💳 {order.payment_method === 'cash' ? 'كاش' : order.payment_method === 'pos_on_delivery' ? 'شبكة' : 'تحويل'}</span>
+                      <span>#{order.id.slice(0, 6)}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Desktop Table for Delivered Orders */}
+            <div className="hidden md:block card overflow-hidden border border-white/10 shadow-lg">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="border-b border-white/10 bg-white/3 text-gray-400">
+                    <th className="p-3">#</th>
+                    <th className="p-3">العميل</th>
+                    <th className="p-3">حجم الوايت</th>
+                    <th className="p-3">الحي</th>
+                    <th className="p-3">المبلغ</th>
+                    <th className="p-3">طريقة الدفع</th>
+                    <th className="p-3">تاريخ الطلب</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {filteredDeliveredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-gray-500">
+                        لا توجد طلبات أونلاين مفرغة في هذا التاريخ
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredDeliveredOrders.map(order => (
+                      <tr key={order.id} className="hover:bg-white/3">
+                        <td className="p-3 font-mono text-gray-500">#{order.id.slice(0, 6)}</td>
+                        <td className="p-3 font-bold text-white">{order.customer_name}</td>
+                        <td className="p-3 text-teal-300">{order.tanker_size_name}</td>
+                        <td className="p-3 text-slate-300">{order.district}</td>
+                        <td className="p-3 font-bold text-emerald-400">{formatCurrency(order.tanker_price)}</td>
+                        <td className="p-3 text-gray-400">{order.payment_method === 'cash' ? 'نقداً' : order.payment_method === 'pos_on_delivery' ? 'شبكة مدى' : 'تحويل'}</td>
+                        <td className="p-3 text-gray-400">{formatShortDate(order.created_at)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 1: ADD EXPENSE ── */}
+      {showExpenseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="card glass-strong max-w-md w-full p-6 border border-amber-500/30 shadow-2xl space-y-4 animate-scale-in">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Receipt className="text-amber-400" size={20} />
+                <h3 className="font-bold text-white text-base">تسجيل مصروف تشغيلي جديد</h3>
+              </div>
+              <button
+                onClick={() => setShowExpenseModal(false)}
+                className="glass p-1.5 rounded-lg text-gray-400 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveExpense} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5">التاريخ</label>
+                <input
+                  type="date"
+                  required
+                  value={expenseForm.expense_date}
+                  onChange={e => setExpenseForm(f => ({ ...f, expense_date: e.target.value }))}
+                  className="input-field min-h-[44px] text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5">التصنيف</label>
+                <select
+                  value={expenseForm.category}
+                  onChange={e => setExpenseForm(f => ({ ...f, category: e.target.value as ExpenseCategory }))}
+                  className="input-field min-h-[44px] text-sm bg-slate-900 cursor-pointer"
+                >
+                  <option value="ديزل">ديزل ⛽</option>
+                  <option value="صيانة وقطع غيار">صيانة وقطع غيار 🔧</option>
+                  <option value="زيوت وغسيل">زيوت وغسيل 🛢️</option>
+                  <option value="أخرى">أخرى ونثريات 📦</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5">المبلغ (ر.س)</label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  step="any"
+                  placeholder="مثال: 150"
+                  value={expenseForm.amount}
+                  onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))}
+                  className="input-field min-h-[44px] text-sm font-bold text-amber-300"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5">البيان / ملاحظات</label>
+                <input
+                  type="text"
+                  placeholder="مثال: تعبئة فل محطة الدريس، تغيير لي ماء 2 بوصة..."
+                  value={expenseForm.notes}
+                  onChange={e => setExpenseForm(f => ({ ...f, notes: e.target.value }))}
+                  className="input-field min-h-[44px] text-sm"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExpenseModal(false)}
+                  className="btn-ghost w-1/2 py-2.5 text-xs font-medium"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingExpense}
+                  className="btn-primary w-1/2 py-2.5 text-xs font-bold flex items-center justify-center gap-2"
+                >
+                  {savingExpense ? <Loader2 size={15} className="animate-spin" /> : <span>حفظ المصروف</span>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 2: ADD MANUAL TRIP ── */}
+      {showTripModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="card glass-strong max-w-md w-full p-6 border border-teal-500/30 shadow-2xl space-y-4 animate-scale-in">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Truck className="text-teal-400" size={20} />
+                <div>
+                  <h3 className="font-bold text-white text-base">تسجيل رد يدوي / مباشر</h3>
+                  <p className="text-[11px] text-gray-400">لرحلات السائق المباشرة بدون طلب عبر الموقع</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowTripModal(false)}
+                className="glass p-1.5 rounded-lg text-gray-400 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveManualTrip} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5">التاريخ</label>
+                <input
+                  type="date"
+                  required
+                  value={tripForm.trip_date}
+                  onChange={e => setTripForm(f => ({ ...f, trip_date: e.target.value }))}
+                  className="input-field min-h-[44px] text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5">حجم الوايت</label>
+                <select
+                  value={tripForm.tanker_size}
+                  onChange={e => {
+                    const selectedSizeName = e.target.value
+                    const matched = sizes.find(s => s.name === selectedSizeName)
+                    setTripForm(f => ({
+                      ...f,
+                      tanker_size: selectedSizeName,
+                      amount: matched ? String(matched.price) : f.amount,
+                    }))
+                  }}
+                  className="input-field min-h-[44px] text-sm bg-slate-900 cursor-pointer"
+                >
+                  {sizes.map(s => (
+                    <option key={s.id} value={s.name}>
+                      {s.name} ({formatCurrency(s.price)})
+                    </option>
+                  ))}
+                  <option value="رد مباشر عايدي">رد مباشر عايدي (120 ر.س)</option>
+                  <option value="رد مباشر تريلا">رد مباشر تريلا (250 ر.س)</option>
+                  <option value="أخرى / حجم مخصص">أخرى / حجم مخصص</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5">المبلغ المستلم (ر.س)</label>
+                <input
+                  type="number"
+                  required
+                  min={0}
+                  step="any"
+                  value={tripForm.amount}
+                  onChange={e => setTripForm(f => ({ ...f, amount: e.target.value }))}
+                  className="input-field min-h-[44px] text-sm font-bold text-emerald-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5">البيان / ملاحظات (اختياري)</label>
+                <input
+                  type="text"
+                  placeholder="مثال: رد مباشر لاستراحة مجاورة، دفع كاش..."
+                  value={tripForm.notes}
+                  onChange={e => setTripForm(f => ({ ...f, notes: e.target.value }))}
+                  className="input-field min-h-[44px] text-sm"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTripModal(false)}
+                  className="btn-ghost w-1/2 py-2.5 text-xs font-medium"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingTrip}
+                  className="btn-primary w-1/2 py-2.5 text-xs font-bold flex items-center justify-center gap-2"
+                >
+                  {savingTrip ? <Loader2 size={15} className="animate-spin" /> : <span>حفظ الرد</span>}
                 </button>
               </div>
             </form>
@@ -2458,7 +3678,7 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
 // ─────────────────────────────────────────────
 // MAIN ADMIN PAGE
 // ─────────────────────────────────────────────
-type Tab = 'overview' | 'pending' | 'bookings' | 'water' | 'facilities' | 'properties' | 'addons' | 'settings'
+type Tab = 'overview' | 'pending' | 'bookings' | 'water' | 'ledger' | 'facilities' | 'properties' | 'addons' | 'settings'
 
 const AdminPage: React.FC = () => {
   const { profile } = useAuth()
@@ -2636,6 +3856,7 @@ const AdminPage: React.FC = () => {
     { id: 'pending', label: 'بانتظار الإجراء', icon: <Clock size={16} />, badge: allPending.length },
     { id: 'bookings', label: 'جميع الحجوزات', icon: <CalendarCheck size={16} /> },
     { id: 'water', label: 'وايتات الماء 💧', icon: <Droplets size={16} className="text-teal-400" />, badge: newWaterOrdersCount },
+    { id: 'ledger', label: 'سجل وحسابات الوايت 📊', icon: <BarChart3 size={16} className="text-amber-400" /> },
     { id: 'facilities', label: 'إدارة المرافق 🏡', icon: <Palmtree size={16} className="text-emerald-400" /> },
     { id: 'properties', label: 'الوحدات', icon: <Home size={16} /> },
     { id: 'addons', label: 'الإضافات', icon: <Zap size={16} /> },
@@ -3051,6 +4272,17 @@ const AdminPage: React.FC = () => {
             sizes={waterSizes}
             onRefresh={fetchAll}
             showToast={showToast}
+            onNavigateToLedger={() => setActiveTab('ledger')}
+          />
+        )}
+
+        {activeTab === 'ledger' && (
+          <WaterLedgerTab
+            orders={waterOrders}
+            sizes={waterSizes}
+            settings={settings}
+            showToast={showToast}
+            onNavigateToWaterOrders={() => setActiveTab('water')}
           />
         )}
 

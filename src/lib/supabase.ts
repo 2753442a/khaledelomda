@@ -218,6 +218,61 @@ export type Database = {
           created_at?: string
         }
       }
+      water_expenses: {
+        Row: {
+          id: string
+          expense_date: string
+          category: 'ديزل' | 'صيانة وقطع غيار' | 'زيوت وغسيل' | 'أخرى'
+          amount: number
+          notes: string | null
+          receipt_image_url: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          expense_date?: string
+          category: 'ديزل' | 'صيانة وقطع غيار' | 'زيوت وغسيل' | 'أخرى'
+          amount: number
+          notes?: string | null
+          receipt_image_url?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          expense_date?: string
+          category?: 'ديزل' | 'صيانة وقطع غيار' | 'زيوت وغسيل' | 'أخرى'
+          amount?: number
+          notes?: string | null
+          receipt_image_url?: string | null
+          created_at?: string
+        }
+      }
+      water_manual_trips: {
+        Row: {
+          id: string
+          trip_date: string
+          tanker_size: string
+          amount: number
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          trip_date?: string
+          tanker_size?: string
+          amount: number
+          notes?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          trip_date?: string
+          tanker_size?: string
+          amount?: number
+          notes?: string | null
+          created_at?: string
+        }
+      }
     }
   }
 }
