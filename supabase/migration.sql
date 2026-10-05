@@ -25,6 +25,7 @@ create table if not exists resort_settings (
 );
 
 insert into resort_settings (id) values (1) on conflict (id) do nothing;
+update resort_settings set default_check_in_time = '15:30', default_check_out_time = '11:30' where id = 1;
 
 -- ─────────────────────────────────────────────────────────────
 -- 2. Profiles (Linked to Supabase Auth)

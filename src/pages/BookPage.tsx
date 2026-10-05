@@ -6,7 +6,8 @@ import BookingCalendar from '../components/BookingCalendar'
 import AuthModal from '../components/AuthModal'
 import {
   formatArabicDate, formatTime, formatCurrency, getPriceForDate,
-  generateWhatsAppLink, buildBookingWhatsAppMessage
+  generateWhatsAppLink, buildBookingWhatsAppMessage,
+  formatCheckInTime, formatCheckOutTime
 } from '../lib/utils'
 import { compressReceiptImage, formatFileSize } from '../lib/imageCompression'
 import {
@@ -166,11 +167,14 @@ const BookPage: React.FC = () => {
     setError(null)
 
     const checkInDt = new Date(selectedDate)
-    const [cih, cim] = settings.default_check_in_time.split(':').map(Number)
+    const checkInStr = (settings.default_check_in_time === '03:00:00' || settings.default_check_in_time === '03:00' || !settings.default_check_in_time) ? '15:30' : settings.default_check_in_time
+    const [cih, cim] = checkInStr.split(':').map(Number)
     checkInDt.setHours(cih, cim, 0, 0)
 
     const checkOutDt = addDays(new Date(selectedDate), 1)
-    const [coh, com] = settings.default_check_out_time.split(':').map(Number)
+    const checkOutStr = (settings.default_check_out_time === '03:00:00' || settings.default_check_out_time === '03:00' || !settings.default_check_out_time) ? '11:30' : settings.default_check_out_time
+    let [coh, com] = checkOutStr.split(':').map(Number)
+    if (coh === 3 && com === 0) { coh = 11; com = 30 }
     checkOutDt.setHours(coh, com, 0, 0)
 
     try {
@@ -257,12 +261,19 @@ const BookPage: React.FC = () => {
   }
 
   if (success && bookingId && settings && selectedProperty && selectedDate) {
+    const addonsListText = Object.values(addonSelections)
+      .filter(s => s.quantity > 0)
+      .map(s => `${s.addon.name} × ${s.quantity} (${formatCurrency(s.addon.price * s.quantity)})`)
+      .join('، ')
+
     const waMsg = buildBookingWhatsAppMessage({
+      customerName: profile?.full_name ?? 'العميل',
+      customerPhone: profile?.phone ?? '',
       propertyName: selectedProperty.name,
-      customerName: profile?.full_name ?? '',
-      date: formatArabicDate(selectedDate),
-      checkIn: formatTime(settings.default_check_in_time),
-      checkOut: formatTime(settings.default_check_out_time),
+      date: selectedDate,
+      checkIn: settings.default_check_in_time,
+      checkOut: settings.default_check_out_time,
+      addonsListText,
       totalAmount,
       depositAmount,
       paymentMethod,
@@ -600,9 +611,15 @@ const BookPage: React.FC = () => {
                           </div>
 
                           {settings && (
-                            <div className="text-xs text-gray-500 space-y-1">
-                              <div>⏰ الوصول: <span className="text-gray-300">{formatTime(settings.default_check_in_time)}</span></div>
-                              <div>⏰ المغادرة: <span className="text-gray-300">{formatTime(settings.default_check_out_time)} (اليوم التالي)</span></div>
+                            <div className="text-xs text-gray-400 space-y-1.5 p-2.5 rounded-xl bg-white/5 border border-white/5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-gray-400">⏰ وقت الوصول:</span>
+                                <span className="text-emerald-400 font-bold">{formatCheckInTime(settings.default_check_in_time)}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-gray-400">⏰ وقت المغادرة:</span>
+                                <span className="text-emerald-400 font-bold">{formatCheckOutTime(settings.default_check_out_time)} (اليوم التالي)</span>
+                              </div>
                             </div>
                           )}
                         </>

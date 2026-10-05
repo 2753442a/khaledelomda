@@ -4,7 +4,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import {
   formatArabicDate, formatCurrency, formatShortDate, formatTime,
-  generateWhatsAppLink
+  formatCheckInTime, formatCheckOutTime,
+  generateWhatsAppLink, buildBookingWhatsAppMessage
 } from '../lib/utils'
 import {
   BarChart3, CalendarCheck, Clock, Settings, Users, Loader2,
@@ -49,6 +50,24 @@ interface Booking {
   created_at: string
   properties?: { name: string }
   booking_addons?: BookingAddon[]
+}
+
+const getBookingWhatsAppMsg = (b: Booking) => {
+  const addonsText = b.booking_addons && b.booking_addons.length > 0
+    ? b.booking_addons.map(a => `${a.addons?.name ?? 'إضافة'} (${a.quantity})`).join('، ')
+    : ''
+  return buildBookingWhatsAppMessage({
+    customerName: b.customer_name,
+    customerPhone: b.customer_phone,
+    propertyName: b.properties?.name || 'منتجع وبستان خالد العمدة',
+    date: b.booking_date,
+    checkIn: b.check_in,
+    checkOut: b.check_out,
+    addonsListText: addonsText,
+    totalAmount: b.total_amount,
+    depositAmount: b.deposit_amount,
+    paymentMethod: b.payment_method || 'bank_transfer',
+  })
 }
 
 interface Settings {
@@ -180,13 +199,13 @@ const AdminCalendar: React.FC<{ bookings: Booking[]; properties: Property[]; onS
         </button>
       </div>
 
-      <div className="grid grid-cols-7 mb-2">
+      <div className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center font-bold text-xs sm:text-sm text-slate-400 py-2 mb-1" dir="rtl">
         {['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'].map(d => (
-          <div key={d} className="text-center text-xs text-gray-400 font-semibold py-1">{d}</div>
+          <div key={d} className="truncate py-1 select-none">{d}</div>
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-1 sm:gap-1.5" dir="rtl">
         {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e${i}`} />)}
         {days.map(day => {
           const dayBookings = getBookingsForDay(day)
@@ -344,7 +363,7 @@ const ActionableBookingCard: React.FC<{
         </button>
 
         <a
-          href={generateWhatsAppLink(booking.customer_phone, `السلام عليكم ${booking.customer_name}، بخصوص حجزكم بتاريخ ${formatShortDate(booking.booking_date)} في منتجع وبستان خالد العمدة`)}
+          href={generateWhatsAppLink(booking.customer_phone, getBookingWhatsAppMsg(booking))}
           target="_blank"
           rel="noopener noreferrer"
           className="glass text-xs py-2 px-3 text-green-400 hover:text-green-300 rounded-xl flex items-center gap-1.5 mr-auto"
@@ -429,7 +448,7 @@ const BookingDetailsModal: React.FC<{
               <div className="flex items-center gap-2">
                 <span className="font-mono text-white text-base" dir="ltr">{booking.customer_phone}</span>
                 <a
-                  href={generateWhatsAppLink(booking.customer_phone, `السلام عليكم ${booking.customer_name}`)}
+                  href={generateWhatsAppLink(booking.customer_phone, getBookingWhatsAppMsg(booking))}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 text-xs flex items-center gap-1"
@@ -458,8 +477,11 @@ const BookingDetailsModal: React.FC<{
               </div>
               <div>
                 <p className="text-xs text-gray-400">أوقات الوصول والمغادرة</p>
-                <p className="font-medium text-gray-300">
-                  {formatTime(booking.check_in)} ⬅ {formatTime(booking.check_out)}
+                <p className="font-medium text-gray-300 flex items-center gap-1.5 mt-0.5">
+                  <span className="text-emerald-400 font-mono">{formatCheckInTime(booking.check_in)}</span>
+                  <span>⬅</span>
+                  <span className="text-amber-400 font-mono">{formatCheckOutTime(booking.check_out)}</span>
+                  <span className="text-[10px] text-gray-400">(اليوم التالي)</span>
                 </p>
               </div>
             </div>
@@ -590,7 +612,7 @@ const BookingDetailsModal: React.FC<{
               </button>
             )}
             <a
-              href={generateWhatsAppLink(booking.customer_phone, `السلام عليكم ${booking.customer_name}، بخصوص حجزكم بتاريخ ${formatShortDate(booking.booking_date)} في منتجع وبستان خالد العمدة`)}
+              href={generateWhatsAppLink(booking.customer_phone, getBookingWhatsAppMsg(booking))}
               target="_blank"
               rel="noopener noreferrer"
               className="glass text-xs py-2.5 px-4 text-green-400 hover:text-green-300 rounded-xl flex items-center gap-1.5"
@@ -1561,7 +1583,7 @@ const AdminPage: React.FC = () => {
 
                               {/* WhatsApp link */}
                               <a
-                                href={generateWhatsAppLink(b.customer_phone, `السلام عليكم ${b.customer_name}، بخصوص حجزكم بتاريخ ${formatShortDate(b.booking_date)} في منتجع وبستان خالد العمدة`)}
+                                href={generateWhatsAppLink(b.customer_phone, getBookingWhatsAppMsg(b))}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="glass p-2 rounded-xl text-green-400 hover:text-green-300 hover:bg-green-500/10 transition-colors"

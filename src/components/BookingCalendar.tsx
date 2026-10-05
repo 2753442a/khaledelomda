@@ -125,9 +125,9 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
       </div>
 
       {/* Weekday headers */}
-      <div className="grid grid-cols-7 mb-2">
-        {WEEKDAYS.map(d => (
-          <div key={d} className="text-center text-xs text-gray-400 font-semibold py-1.5">{d}</div>
+      <div className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center font-bold text-xs sm:text-sm text-slate-400 py-2 mb-1" dir="rtl">
+        {WEEKDAYS.map(day => (
+          <div key={day} className="truncate py-1 select-none">{day}</div>
         ))}
       </div>
 
@@ -137,10 +137,10 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
           <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="grid grid-cols-7 gap-1 sm:gap-1.5" dir="rtl">
           {/* Empty cells before first day */}
           {Array.from({ length: firstDayOfWeek }).map((_, i) => (
-            <div key={`empty-${i}`} className="min-h-[52px]" />
+            <div key={`empty-${i}`} className="min-h-[52px] sm:min-h-[60px]" />
           ))}
           {days.map(day => {
             const s = getDayStatus(day)

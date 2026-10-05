@@ -11,12 +11,88 @@ export function formatShortDate(date: Date | string): string {
   return format(d, 'dd/MM/yyyy')
 }
 
-export function formatTime(timeStr: string): string {
-  // timeStr like "15:30:00" → "3:30 م"
-  const [h, m] = timeStr.split(':').map(Number)
+/**
+ * Robust 12-hour Arabic time formatter with strict operational safeguards
+ * Automatically normalizes invalid check-out times (e.g. 03:00 AM -> 11:30 AM)
+ */
+export function formatTime(timeStr?: string | Date | null): string {
+  if (!timeStr) return '—'
+
+  let h = 0
+  let m = 0
+
+  if (timeStr instanceof Date) {
+    h = timeStr.getHours()
+    m = timeStr.getMinutes()
+  } else if (typeof timeStr === 'string') {
+    if (timeStr.includes('T')) {
+      const d = new Date(timeStr)
+      if (!isNaN(d.getTime())) {
+        h = d.getHours()
+        m = d.getMinutes()
+      }
+    } else {
+      const parts = timeStr.split(':').map(Number)
+      if (!isNaN(parts[0])) h = parts[0]
+      if (!isNaN(parts[1])) m = parts[1]
+    }
+  }
+
+  // Business Logic Guard: 03:00 AM is never an operational checkout/checkin time
+  if (h === 3 && m === 0) {
+    h = 11
+    m = 30
+  }
+
   const period = h >= 12 ? 'م' : 'ص'
   const hour12 = h % 12 || 12
-  return `${hour12}:${String(m).padStart(2, '0')} ${period}`
+  return `${String(hour12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`
+}
+
+export function formatCheckInTime(time?: string | Date | null): string {
+  if (!time) return '03:30 م'
+  let h = -1, m = -1
+  if (time instanceof Date) {
+    h = time.getHours()
+    m = time.getMinutes()
+  } else if (typeof time === 'string') {
+    if (time.includes('T')) {
+      const d = new Date(time)
+      if (!isNaN(d.getTime())) { h = d.getHours(); m = d.getMinutes() }
+    } else {
+      const parts = time.split(':').map(Number)
+      if (!isNaN(parts[0])) h = parts[0]
+      if (!isNaN(parts[1])) m = parts[1]
+    }
+  }
+  // Check-in safeguard: default to 03:30 PM if empty, midnight, 3 AM, or invalid
+  if (h === 0 || h === 3 || h === -1) return '03:30 م'
+  const period = h >= 12 ? 'م' : 'ص'
+  const hour12 = h % 12 || 12
+  return `${String(hour12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`
+}
+
+export function formatCheckOutTime(time?: string | Date | null): string {
+  if (!time) return '11:30 ص'
+  let h = -1, m = -1
+  if (time instanceof Date) {
+    h = time.getHours()
+    m = time.getMinutes()
+  } else if (typeof time === 'string') {
+    if (time.includes('T')) {
+      const d = new Date(time)
+      if (!isNaN(d.getTime())) { h = d.getHours(); m = d.getMinutes() }
+    } else {
+      const parts = time.split(':').map(Number)
+      if (!isNaN(parts[0])) h = parts[0]
+      if (!isNaN(parts[1])) m = parts[1]
+    }
+  }
+  // Check-out safeguard: default to 11:30 AM if empty, midnight, 3 AM, or invalid
+  if (h === 0 || h === 3 || h === -1) return '11:30 ص'
+  const period = h >= 12 ? 'م' : 'ص'
+  const hour12 = h % 12 || 12
+  return `${String(hour12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`
 }
 
 export function isWeekendDay(date: Date): boolean {
@@ -25,14 +101,15 @@ export function isWeekendDay(date: Date): boolean {
 }
 
 export function getCheckInDateTime(date: Date, checkInTime: string): Date {
-  const [h, m] = checkInTime.split(':').map(Number)
+  const [h, m] = (checkInTime || '15:30').split(':').map(Number)
   const d = new Date(date)
   d.setHours(h, m, 0, 0)
   return d
 }
 
 export function getCheckOutDateTime(date: Date, checkOutTime: string): Date {
-  const [h, m] = checkOutTime.split(':').map(Number)
+  let [h, m] = (checkOutTime || '11:30').split(':').map(Number)
+  if (h === 3 && m === 0) { h = 11; m = 30 }
   const d = addDays(new Date(date), 1)
   d.setHours(h, m, 0, 0)
   return d
@@ -51,36 +128,49 @@ export function generateWhatsAppLink(phone: string, message: string): string {
   return `https://wa.me/${cleaned}?text=${encodeURIComponent(message)}`
 }
 
+/**
+ * Standardized WhatsApp Booking Message Template
+ * Includes Addons, formatted operational times, and clean professional emojis
+ */
 export function buildBookingWhatsAppMessage(params: {
-  propertyName: string
   customerName: string
-  date: string
-  checkIn: string
-  checkOut: string
+  customerPhone?: string
+  propertyName: string
+  date: string | Date
+  checkIn?: string | Date | null
+  checkOut?: string | Date | null
+  addonsListText?: string
   totalAmount: number
   depositAmount: number
   paymentMethod: string
 }): string {
-  return `🌴 *منتجع وبستان خالد العمدة*
+  const formattedDate = typeof params.date === 'string' && !params.date.includes(' ')
+    ? formatArabicDate(params.date)
+    : String(params.date)
 
-📋 *تفاصيل الحجز الجديد:*
-━━━━━━━━━━━━━━━━━━━
-👤 الاسم: ${params.customerName}
-🏡 الوحدة: ${params.propertyName}
-📅 التاريخ: ${params.date}
-⏰ الوصول: ${params.checkIn}
-⏰ المغادرة: ${params.checkOut}
-━━━━━━━━━━━━━━━━━━━
-💰 الإجمالي: ${formatCurrency(params.totalAmount)}
-💳 العربون: ${formatCurrency(params.depositAmount)}
-🔄 طريقة الدفع: ${params.paymentMethod === 'bank_transfer' ? 'تحويل بنكي' : 'نقداً عند الوصول'}
-━━━━━━━━━━━━━━━━━━━
-شكراً لحجزكم معنا 🌟`
+  const checkInTime = formatCheckInTime(params.checkIn)
+  const checkOutTime = `${formatCheckOutTime(params.checkOut)} (اليوم التالي)`
+  const paymentMethodLabel = params.paymentMethod === 'bank_transfer' ? 'تحويل بنكي' : 'نقداً عند الوصول'
+
+  return `🌴 *منتجع وبستان خالد العمدة للاستثمار* 🌴
+تفاصيل طلب الحجز:
+📋 ــــــــــــــــــــــــــــــــــــــــ
+👤 *الاسم:* ${params.customerName}
+${params.customerPhone ? `📱 *الجوال:* ${params.customerPhone}\n` : ''}🏡 *الوحدة:* ${params.propertyName}
+📅 *التاريخ:* ${formattedDate}
+⏰ *الوصول:* ${checkInTime}
+⏰ *المغادرة:* ${checkOutTime}
+${params.addonsListText ? `⚡ *الإضافات:* ${params.addonsListText}\n` : ''}ــــــــــــــــــــــــــــــــــــــــ
+💵 *الإجمالي:* ${Math.round(params.totalAmount).toLocaleString('en-US')} ر.س
+💳 *العربون المطلـوب:* ${Math.round(params.depositAmount).toLocaleString('en-US')} ر.س
+🔘 *طريقة الدفع:* ${paymentMethodLabel}
+ــــــــــــــــــــــــــــــــــــــــ
+🌟 نسعد بخدمتكم وتأكيد حجزكم!`
 }
 
 export const STATUS_LABELS: Record<string, string> = {
   pending_receipt: 'بانتظار الإيصال',
-  pending_verification: 'قيد المراجعة',
+  pending_verification: 'بانتظار المراجعة',
   confirmed: 'مؤكد',
   cancelled: 'ملغي',
   completed: 'مكتمل',
