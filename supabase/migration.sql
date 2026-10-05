@@ -197,7 +197,20 @@ create trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 
 -- ─────────────────────────────────────────────────────────────
--- 10. Row Level Security Policies (with DROP IF EXISTS for safe re-runs)
+-- 10. Helper function to check admin without RLS recursion
+-- ─────────────────────────────────────────────────────────────
+create or replace function public.is_admin()
+returns boolean as $$
+begin
+  return exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'admin'
+  );
+end;
+$$ language plpgsql security definer;
+
+-- ─────────────────────────────────────────────────────────────
+-- 11. Row Level Security Policies (Safe re-runs & No Recursion)
 -- ─────────────────────────────────────────────────────────────
 
 -- Enable RLS
@@ -215,76 +228,79 @@ create policy "Public read settings" on resort_settings
 
 drop policy if exists "Admin update settings" on resort_settings;
 create policy "Admin update settings" on resort_settings
-  for update using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  for update using (public.is_admin());
 
 -- profiles policies
 drop policy if exists "Users read own profile" on profiles;
 create policy "Users read own profile" on profiles
-  for select using (id = auth.uid() or
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin'));
+  for select using (id = auth.uid() or public.is_admin());
 
 drop policy if exists "Users update own profile" on profiles;
 create policy "Users update own profile" on profiles
-  for update using (id = auth.uid());
+  for update using (id = auth.uid() or public.is_admin());
 
 drop policy if exists "Users insert own profile" on profiles;
 create policy "Users insert own profile" on profiles
-  for insert with check (id = auth.uid());
+  for insert with check (id = auth.uid() or public.is_admin());
 
 drop policy if exists "Admin update any profile" on profiles;
 create policy "Admin update any profile" on profiles
-  for update using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  for update using (public.is_admin());
 
--- properties policies
+-- properties policies: public read, admin write
 drop policy if exists "Public read properties" on properties;
 create policy "Public read properties" on properties
   for select using (true);
 
-drop policy if exists "Admin manage properties" on properties;
-create policy "Admin manage properties" on properties
-  for all using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+drop policy if exists "Admin insert properties" on properties;
+create policy "Admin insert properties" on properties
+  for insert with check (public.is_admin());
 
--- addons policies
+drop policy if exists "Admin update properties" on properties;
+create policy "Admin update properties" on properties
+  for update using (public.is_admin());
+
+drop policy if exists "Admin delete properties" on properties;
+create policy "Admin delete properties" on properties
+  for delete using (public.is_admin());
+
+drop policy if exists "Admin manage properties" on properties;
+
+-- addons policies: public read, admin write
 drop policy if exists "Public read addons" on addons;
 create policy "Public read addons" on addons
   for select using (true);
 
+drop policy if exists "Admin insert addons" on addons;
+create policy "Admin insert addons" on addons
+  for insert with check (public.is_admin());
+
+drop policy if exists "Admin update addons" on addons;
+create policy "Admin update addons" on addons
+  for update using (public.is_admin());
+
+drop policy if exists "Admin delete addons" on addons;
+create policy "Admin delete addons" on addons
+  for delete using (public.is_admin());
+
 drop policy if exists "Admin manage addons" on addons;
-create policy "Admin manage addons" on addons
-  for all using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
 
 -- bookings policies
 drop policy if exists "Users read own bookings" on bookings;
 create policy "Users read own bookings" on bookings
-  for select using (
-    customer_id = auth.uid() or
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  for select using (customer_id = auth.uid() or public.is_admin());
 
 drop policy if exists "Users insert booking" on bookings;
 create policy "Users insert booking" on bookings
-  for insert with check (customer_id = auth.uid());
+  for insert with check (customer_id = auth.uid() or public.is_admin());
 
 drop policy if exists "Users update own booking" on bookings;
 create policy "Users update own booking" on bookings
-  for update using (
-    customer_id = auth.uid() or
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  for update using (customer_id = auth.uid() or public.is_admin());
 
 drop policy if exists "Admin delete booking" on bookings;
 create policy "Admin delete booking" on bookings
-  for delete using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  for delete using (public.is_admin());
 
 -- booking_addons policies
 drop policy if exists "Users read own booking addons" on booking_addons;
@@ -293,8 +309,7 @@ create policy "Users read own booking addons" on booking_addons
     exists (
       select 1 from bookings b
       where b.id = booking_id and (
-        b.customer_id = auth.uid() or
-        exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+        b.customer_id = auth.uid() or public.is_admin()
       )
     )
   );
@@ -303,16 +318,16 @@ drop policy if exists "Users insert booking addons" on booking_addons;
 create policy "Users insert booking addons" on booking_addons
   for insert with check (
     exists (
-      select 1 from bookings b where b.id = booking_id and b.customer_id = auth.uid()
+      select 1 from bookings b where b.id = booking_id and (b.customer_id = auth.uid() or public.is_admin())
     )
   );
 
 -- ─────────────────────────────────────────────────────────────
--- 11. Storage Bucket & Policies (receipts)
+-- 12. Storage Bucket & Policies (receipts)
 -- ─────────────────────────────────────────────────────────────
 insert into storage.buckets (id, name, public)
-values ('receipts', 'receipts', false)
-on conflict (id) do nothing;
+values ('receipts', 'receipts', true)
+on conflict (id) do update set public = true;
 
 drop policy if exists "Authenticated users can upload receipts" on storage.objects;
 create policy "Authenticated users can upload receipts" on storage.objects
