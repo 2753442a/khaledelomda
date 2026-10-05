@@ -84,6 +84,10 @@
   .custom-scrollbar::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #484f58; }
 
+  /* Hidden scrollbar (mobile tabs horizontal swipe) */
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+
   /* Animations */
   .animate-float {
     animation: float 6s ease-in-out infinite;
@@ -120,7 +124,7 @@
   }
 
   @keyframes slideInRight {
-    from { opacity: 0; transform: translateX(24px); }
+    from { opacity: 0; transform: translateX(100%); }
     to { opacity: 1; transform: translateX(0); }
   }
 
@@ -134,7 +138,7 @@
   }
 
   .animate-slide-in-right {
-    animation: slideInRight 0.4s ease forwards;
+    animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
   .animate-scale-in {

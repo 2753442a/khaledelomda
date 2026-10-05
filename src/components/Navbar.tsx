@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
@@ -14,8 +14,38 @@ const Navbar: React.FC = () => {
   const [authOpen, setAuthOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const location = useLocation()
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const isActive = (path: string) => location.pathname === path
+
+  // Close dropdown when route changes
+  useEffect(() => {
+    setDropdownOpen(false)
+    setMenuOpen(false)
+  }, [location.pathname])
+
+  // Close dropdown on outside click (desktop)
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [dropdownOpen])
+
+  // Lock body scroll when mobile menu or dropdown is open
+  useEffect(() => {
+    if (menuOpen || dropdownOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [menuOpen, dropdownOpen])
 
   return (
     <>
@@ -48,7 +78,7 @@ const Navbar: React.FC = () => {
           {/* Right Section */}
           <div className="flex items-center gap-3">
             {user ? (
-              <div className="relative">
+              <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                   className="flex items-center gap-2 glass px-3 py-2 rounded-xl hover:border-emerald-500/40 transition-all"
@@ -62,37 +92,66 @@ const Navbar: React.FC = () => {
                   {profile?.is_flagged && (
                     <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="حساب مُحذَّر" />
                   )}
-                  <ChevronDown size={14} className="text-gray-400" />
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
+
+                {/* User Dropdown Menu — Opaque with dark backdrop on mobile */}
                 {dropdownOpen && (
-                  <div className="absolute left-0 top-full mt-2 w-48 glass-strong rounded-xl border border-white/10 shadow-2xl overflow-hidden animate-scale-in">
-                    <Link
-                      to="/my-bookings"
-                      className="flex items-center gap-2 px-4 py-3 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors"
+                  <>
+                    {/* Dark overlay backdrop (mobile & desktop) */}
+                    <div
+                      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
                       onClick={() => setDropdownOpen(false)}
-                    >
-                      <CalendarCheck size={15} />
-                      حجوزاتي
-                    </Link>
-                    {profile?.role === 'admin' && (
+                    />
+
+                    {/* Menu panel */}
+                    <div className="
+                      fixed left-4 right-4 bottom-auto top-20 z-50
+                      sm:absolute sm:left-0 sm:right-auto sm:top-full sm:mt-2 sm:w-52 sm:bottom-auto
+                      bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden
+                      animate-scale-in
+                    ">
+                      {/* Profile header (mobile only) */}
+                      <div className="sm:hidden px-4 py-3 border-b border-slate-700/60 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
+                          <span className="text-white text-sm font-bold">
+                            {profile?.full_name?.[0] ?? 'م'}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-white">{profile?.full_name || 'مستخدم'}</p>
+                          <p className="text-[11px] text-gray-400 font-mono" dir="ltr">{profile?.phone || ''}</p>
+                        </div>
+                      </div>
+
                       <Link
-                        to="/admin"
-                        className="flex items-center gap-2 px-4 py-3 text-sm text-amber-400 hover:bg-white/5 transition-colors"
+                        to="/my-bookings"
+                        className="flex items-center gap-3 px-4 min-h-[48px] text-sm text-gray-200 hover:bg-white/8 hover:text-white transition-colors"
                         onClick={() => setDropdownOpen(false)}
                       >
-                        <Shield size={15} />
-                        لوحة التحكم
+                        <CalendarCheck size={17} className="text-emerald-400" />
+                        حجوزاتي
                       </Link>
-                    )}
-                    <div className="border-t border-white/8" />
-                    <button
-                      onClick={() => { signOut(); setDropdownOpen(false) }}
-                      className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
-                    >
-                      <LogOut size={15} />
-                      تسجيل الخروج
-                    </button>
-                  </div>
+                      {profile?.role === 'admin' && (
+                        <Link
+                          to="/admin"
+                          className="flex items-center gap-3 px-4 min-h-[48px] text-sm text-amber-400 hover:bg-white/8 transition-colors"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          <Shield size={17} />
+                          لوحة التحكم
+                        </Link>
+                      )}
+                      <div className="border-t border-slate-700/60" />
+                      <button
+                        onClick={() => { signOut(); setDropdownOpen(false) }}
+                        className="w-full flex items-center gap-3 px-4 min-h-[48px] text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        <LogOut size={17} />
+                        تسجيل الخروج
+                      </button>
+                    </div>
+                  </>
                 )}
               </div>
             ) : (
@@ -114,20 +173,70 @@ const Navbar: React.FC = () => {
             </button>
           </div>
         </div>
+      </nav>
 
-        {/* Mobile Menu */}
-        {menuOpen && (
-          <div className="md:hidden border-t border-white/8 bg-[#161b22] px-4 py-3 space-y-1 animate-fade-in-up">
-            <MobileNavLink to="/" label="الرئيسية" onClick={() => setMenuOpen(false)} />
-            <MobileNavLink to="/book" label="احجز الآن" onClick={() => setMenuOpen(false)} />
-            <MobileNavLink to="/water" label="وايت ماء حلو 💧" onClick={() => setMenuOpen(false)} />
-            {user && <MobileNavLink to="/my-bookings" label="حجوزاتي" onClick={() => setMenuOpen(false)} />}
-            {profile?.role === 'admin' && (
-              <MobileNavLink to="/admin" label="لوحة التحكم" onClick={() => setMenuOpen(false)} />
+      {/* Mobile Slide-In Drawer */}
+      {menuOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+            onClick={() => setMenuOpen(false)}
+          />
+
+          {/* Drawer Panel */}
+          <div className="fixed top-0 right-0 h-full w-72 max-w-[85vw] bg-slate-950 border-l border-white/10 z-50 shadow-2xl md:hidden animate-slide-in-right">
+            {/* Drawer Header */}
+            <div className="h-16 px-5 flex items-center justify-between border-b border-white/8">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-green-600 to-emerald-500 flex items-center justify-center">
+                  <span className="text-white text-sm">🌴</span>
+                </div>
+                <span className="text-sm font-bold text-white">القائمة</span>
+              </div>
+              <button
+                onClick={() => setMenuOpen(false)}
+                className="glass p-2 rounded-xl text-gray-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Drawer Links */}
+            <div className="p-4 space-y-1">
+              <MobileNavLink to="/" label="الرئيسية" icon={<Home size={17} />} onClick={() => setMenuOpen(false)} active={isActive('/')} />
+              <MobileNavLink to="/book" label="احجز الآن" icon={<CalendarCheck size={17} />} onClick={() => setMenuOpen(false)} active={isActive('/book')} />
+              <MobileNavLink to="/water" label="وايت ماء حلو 💧" icon={<Droplets size={17} className="text-teal-400" />} onClick={() => setMenuOpen(false)} active={isActive('/water')} />
+              {user && <MobileNavLink to="/my-bookings" label="حجوزاتي" icon={<CalendarCheck size={17} />} onClick={() => setMenuOpen(false)} active={isActive('/my-bookings')} />}
+              {profile?.role === 'admin' && (
+                <MobileNavLink to="/admin" label="لوحة التحكم" icon={<Shield size={17} className="text-amber-400" />} onClick={() => setMenuOpen(false)} active={isActive('/admin')} />
+              )}
+            </div>
+
+            {/* Drawer Footer */}
+            {user && (
+              <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-white/8">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
+                    <span className="text-white text-xs font-bold">{profile?.full_name?.[0] ?? 'م'}</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">{profile?.full_name || 'مستخدم'}</p>
+                    <p className="text-[11px] text-gray-500 font-mono" dir="ltr">{profile?.phone}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { signOut(); setMenuOpen(false) }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-colors"
+                >
+                  <LogOut size={15} />
+                  تسجيل الخروج
+                </button>
+              </div>
             )}
           </div>
-        )}
-      </nav>
+        </>
+      )}
 
       <ErrorBoundary fallbackTitle="عذراً، حدث خطأ غير متوقع أثناء تحميل هذه النافذة.">
         <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
@@ -150,12 +259,17 @@ const NavLink: React.FC<{ to: string; label: string; icon: React.ReactNode; acti
   </Link>
 )
 
-const MobileNavLink: React.FC<{ to: string; label: string; onClick: () => void }> = ({ to, label, onClick }) => (
+const MobileNavLink: React.FC<{ to: string; label: string; icon: React.ReactNode; onClick: () => void; active: boolean }> = ({ to, label, icon, onClick, active }) => (
   <Link
     to={to}
     onClick={onClick}
-    className="block px-3 py-2.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/5 transition-colors text-sm font-medium"
+    className={`flex items-center gap-3 px-4 min-h-[48px] rounded-xl text-sm font-medium transition-all ${
+      active
+        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
+        : 'text-gray-300 hover:text-white hover:bg-white/5'
+    }`}
   >
+    {icon}
     {label}
   </Link>
 )

@@ -1473,8 +1473,91 @@ ${o.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${o.google_maps_u
             </div>
           </div>
 
-          {/* Table */}
-          <div className="card overflow-hidden border border-white/10 shadow-xl">
+          {/* ── Mobile Cards View (visible on mobile only) ── */}
+          <div className="block md:hidden space-y-3">
+            {filteredOrders.length === 0 ? (
+              <div className="card py-12 text-center text-gray-500 text-sm">
+                لا توجد طلبات مطابقة للبحث
+              </div>
+            ) : (
+              filteredOrders.map((order) => {
+                const cfg = WATER_STATUS_CONFIG[order.status] || WATER_STATUS_CONFIG.new
+                return (
+                  <div key={order.id} className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
+                    {/* Header: Order ID + Status Badge */}
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs text-slate-400">#{order.id.slice(0, 7)}</span>
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${cfg.badgeClass}`}>
+                        {cfg.label}
+                      </span>
+                    </div>
+
+                    {/* Customer & Tanker Info */}
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-bold text-white text-base">{order.customer_name}</h4>
+                        <p className="text-xs text-slate-400 font-mono" dir="ltr">{order.customer_phone}</p>
+                      </div>
+                      <div className="text-left">
+                        <span className="text-xs text-emerald-400 font-bold block">{order.tanker_size_name}</span>
+                        <span className="text-sm font-black text-amber-400">{formatCurrency(order.tanker_price)}</span>
+                      </div>
+                    </div>
+
+                    {/* Location & Details */}
+                    <div className="bg-slate-950/60 rounded-xl p-2.5 text-xs text-slate-300 flex items-center justify-between gap-2">
+                      <span className="truncate">📍 {order.district}{order.street_address ? ` • ${order.street_address}` : ''}</span>
+                      <span className="text-slate-400 shrink-0">خزان {order.tank_type}</span>
+                    </div>
+
+                    {/* Payment & Date Row */}
+                    <div className="flex items-center justify-between text-[11px] text-gray-500">
+                      <span>💳 {order.payment_method === 'cash' ? 'نقداً' : order.payment_method === 'pos_on_delivery' ? 'شبكة مدى' : 'تحويل بنكي'}</span>
+                      {order.created_at && <span>{formatShortDate(order.created_at)}</span>}
+                    </div>
+
+                    {/* Actions Grid */}
+                    <div className="grid grid-cols-3 gap-2 pt-1 border-t border-white/5">
+                      {order.google_maps_url ? (
+                        <a
+                          href={order.google_maps_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-200 py-2.5 px-2 rounded-xl text-xs font-medium transition-colors"
+                        >
+                          🗺️ الخريطة
+                        </a>
+                      ) : (
+                        <span className="flex items-center justify-center text-gray-600 text-xs">—</span>
+                      )}
+                      <a
+                        href={generateWhatsAppLink(order.customer_phone, getDriverWhatsAppMsg(order))}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 py-2.5 px-2 rounded-xl text-xs font-medium transition-colors"
+                      >
+                        💬 واتساب
+                      </a>
+                      <select
+                        value={order.status}
+                        disabled={updatingOrderId === order.id}
+                        onChange={(e) => handleUpdateStatus(order.id, e.target.value as any)}
+                        className="bg-slate-800 border border-white/10 text-white text-xs rounded-xl px-2 py-2.5 focus:border-teal-400 focus:outline-none cursor-pointer text-center"
+                      >
+                        <option value="new">🔄 جديد</option>
+                        <option value="dispatched">🚚 جاري</option>
+                        <option value="delivered">✅ تفريغ</option>
+                        <option value="cancelled">❌ إلغاء</option>
+                      </select>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {/* ── Desktop Table (hidden on mobile) ── */}
+          <div className="hidden md:block card overflow-hidden border border-white/10 shadow-xl">
             <div className="overflow-x-auto custom-scrollbar">
               <table className="w-full text-right text-xs sm:text-sm">
                 <thead>
@@ -1498,7 +1581,7 @@ ${o.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${o.google_maps_u
                       </td>
                     </tr>
                   ) : (
-                    filteredOrders.map((order, idx) => {
+                    filteredOrders.map((order) => {
                       const cfg = WATER_STATUS_CONFIG[order.status] || WATER_STATUS_CONFIG.new
                       return (
                         <tr key={order.id} className="hover:bg-white/3 transition-colors">
@@ -1555,7 +1638,6 @@ ${o.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${o.google_maps_u
                           </td>
                           <td className="p-3.5">
                             <div className="flex items-center justify-center gap-2">
-                              {/* One-click status change selector */}
                               <select
                                 value={order.status}
                                 disabled={updatingOrderId === order.id}
@@ -1567,8 +1649,6 @@ ${o.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${o.google_maps_u
                                 <option value="delivered">تم التفريغ والدفع</option>
                                 <option value="cancelled">إلغاء الطلب</option>
                               </select>
-
-                              {/* WhatsApp Dispatch Button */}
                               <a
                                 href={generateWhatsAppLink(order.customer_phone, getDriverWhatsAppMsg(order))}
                                 target="_blank"
@@ -2595,22 +2675,22 @@ const AdminPage: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Tabs */}
-        <div className="flex flex-wrap gap-2 mb-6 overflow-x-auto custom-scrollbar pb-2">
+        {/* Tabs — Horizontal scroll on mobile, wraps on desktop */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 px-1 -mx-2 sm:mx-0 sm:flex-wrap mb-6">
           {TABS.map(t => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
                 activeTab === t.id
-                  ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                  : 'glass text-gray-400 hover:text-white hover:bg-white/8'
+                  ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg shadow-emerald-500/25 font-bold'
+                  : 'bg-slate-900/80 border border-white/10 text-gray-400 hover:text-white hover:bg-white/8'
               }`}
             >
               {t.icon}
               {t.label}
               {t.badge != null && t.badge > 0 && (
-                <span className="bg-amber-500 text-black text-xs rounded-full px-1.5 py-0.5 font-bold leading-none">
+                <span className="bg-amber-500 text-black text-[10px] rounded-full px-1.5 py-0.5 font-bold leading-none min-w-[18px] text-center">
                   {t.badge}
                 </span>
               )}
@@ -2772,8 +2852,95 @@ const AdminPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto rounded-2xl border border-white/10 bg-[#161b22]/50 shadow-2xl">
+            {/* ── Mobile Cards View (visible on mobile only) ── */}
+            <div className="block md:hidden space-y-3">
+              {filteredBookings.length === 0 ? (
+                <div className="card py-12 text-center text-gray-500 text-sm">
+                  لا توجد حجوزات مطابقة لمعايير البحث
+                </div>
+              ) : (
+                filteredBookings.map(b => {
+                  const isPending = b.status === 'pending_receipt' || b.status === 'pending_verification'
+                  const isCancellable = b.status !== 'cancelled' && b.status !== 'completed'
+
+                  return (
+                    <div key={b.id} className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
+                      {/* Top: Date + Unit + Status */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-emerald-400">{formatShortDate(b.booking_date)}</span>
+                          <span className="text-[11px] text-gray-500">•</span>
+                          <span className="text-xs text-gray-400">{b.properties?.name ?? 'المنتجع'}</span>
+                        </div>
+                        <StatusBadge status={b.status} />
+                      </div>
+
+                      {/* Customer & Financial */}
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-bold text-white text-base">{b.customer_name}</h4>
+                          <p className="text-xs text-slate-400 font-mono" dir="ltr">{b.customer_phone}</p>
+                        </div>
+                        <div className="text-left space-y-0.5">
+                          <p className="font-bold text-white text-sm">{formatCurrency(b.total_amount)}</p>
+                          <p className="text-[11px] text-amber-400 font-medium">عربون: {formatCurrency(b.deposit_amount)}</p>
+                        </div>
+                      </div>
+
+                      {/* Payment Method */}
+                      <div className="bg-slate-950/60 rounded-xl p-2.5 text-xs text-slate-300 flex items-center justify-between">
+                        <span>💳 {b.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقداً عند الوصول'}</span>
+                        <span className="text-[10px] text-gray-500 font-mono">#{b.id.slice(0, 7)}</span>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="grid grid-cols-4 gap-2 pt-1 border-t border-white/5">
+                        <button
+                          onClick={() => setSelectedBookingForDetails(b)}
+                          className="flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-200 py-2.5 px-2 rounded-xl text-xs font-medium transition-colors"
+                        >
+                          👁️ تفاصيل
+                        </button>
+
+                        {isPending ? (
+                          <button
+                            onClick={() => setBookingToConfirm(b)}
+                            className="flex items-center justify-center gap-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 py-2.5 px-2 rounded-xl text-xs font-medium transition-colors"
+                          >
+                            ✅ تأكيد
+                          </button>
+                        ) : (
+                          <span />
+                        )}
+
+                        {isCancellable ? (
+                          <button
+                            onClick={() => setBookingToCancel(b)}
+                            className="flex items-center justify-center gap-1 bg-red-500/10 text-red-400 border border-red-500/20 py-2.5 px-2 rounded-xl text-xs font-medium transition-colors"
+                          >
+                            ❌ إلغاء
+                          </button>
+                        ) : (
+                          <span />
+                        )}
+
+                        <a
+                          href={generateWhatsAppLink(b.customer_phone, getBookingWhatsAppMsg(b))}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 py-2.5 px-2 rounded-xl text-xs font-medium transition-colors"
+                        >
+                          💬 واتساب
+                        </a>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
+            {/* ── Desktop Table (hidden on mobile) ── */}
+            <div className="hidden md:block overflow-x-auto rounded-2xl border border-white/10 bg-[#161b22]/50 shadow-2xl">
               <table className="w-full text-right text-sm">
                 <thead>
                   <tr className="bg-white/5 border-b border-white/10 text-xs text-gray-400 font-semibold">
@@ -2824,10 +2991,8 @@ const AdminPage: React.FC = () => {
                             <StatusBadge status={b.status} />
                           </td>
 
-                          {/* ACTIONS COLUMN */}
                           <td className="px-4 py-3.5">
                             <div className="flex items-center justify-center gap-1.5">
-                              {/* Details button */}
                               <button
                                 onClick={() => setSelectedBookingForDetails(b)}
                                 className="glass p-2 rounded-xl text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
@@ -2836,7 +3001,6 @@ const AdminPage: React.FC = () => {
                                 <Info size={15} />
                               </button>
 
-                              {/* Confirm button (for pending_receipt & pending_verification) */}
                               {isPending && (
                                 <button
                                   onClick={() => setBookingToConfirm(b)}
@@ -2848,7 +3012,6 @@ const AdminPage: React.FC = () => {
                                 </button>
                               )}
 
-                              {/* Cancel button */}
                               {isCancellable && (
                                 <button
                                   onClick={() => setBookingToCancel(b)}
@@ -2860,7 +3023,6 @@ const AdminPage: React.FC = () => {
                                 </button>
                               )}
 
-                              {/* WhatsApp link */}
                               <a
                                 href={generateWhatsAppLink(b.customer_phone, getBookingWhatsAppMsg(b))}
                                 target="_blank"
