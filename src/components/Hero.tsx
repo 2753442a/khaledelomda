@@ -79,17 +79,17 @@ export const Hero: React.FC = () => {
   return (
     <section className="relative min-h-[92vh] sm:min-h-screen flex flex-col justify-between overflow-hidden bg-slate-950 text-white">
       {/* ── Base Layer: High-Resolution Resort Pool & Palm Landscape ── */}
-      <div className="absolute inset-0 z-0">
+      <div className="absolute inset-0 z-0 overflow-hidden">
         <img
-          src="https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=2000&q=80"
-          alt="منتجع وبستان خالد العمدة - مسبح فيروزي ونخيل طبيعي"
+          src="https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=2000&q=80"
+          alt="منتجع وبستان خالد العمدة - مسبح فيروزي وبستان نخيل فاخر"
           className="w-full h-full object-cover object-center select-none scale-105 animate-pulse-glow"
           style={{ animationDuration: '10s' }}
           loading="eager"
         />
 
         {/* ── Overlay Gradient: Rich Emerald & Deep Slate for Maximum Contrast ── */}
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/85 via-emerald-950/80 to-slate-950" />
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/85 via-emerald-950/75 to-slate-950 z-0" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-900/30 via-slate-950/70 to-slate-950" />
       </div>
 
