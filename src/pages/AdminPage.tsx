@@ -11,10 +11,11 @@ import {
   BarChart3, CalendarCheck, Clock, Settings, Users, Loader2,
   Check, X, MessageCircle, Trash2, RefreshCw, Plus, Edit3,
   AlertTriangle, Shield, ChevronRight, ChevronLeft, Home,
-  CheckCircle2, XCircle, Banknote, Eye, Info, Phone, Calendar,
+  CheckCircle2, XCircle, Banknote, Eye, EyeOff, Info, Phone, Calendar,
   CreditCard, Search, Filter, AlertCircle, FileText, CheckCircle,
-  Droplets, Navigation, MapPin, Truck, ExternalLink
+  Droplets, Navigation, MapPin, Truck, ExternalLink, Palmtree, Sparkles, Image as ImageIcon
 } from 'lucide-react'
+import { Facility, DEFAULT_FACILITIES } from '../components/Facilities'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval,
   getDay, addMonths, subMonths, parseISO, isSameDay } from 'date-fns'
 import { ar } from 'date-fns/locale'
@@ -1755,9 +1756,629 @@ ${o.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${o.google_maps_u
 }
 
 // ─────────────────────────────────────────────
+// FACILITIES CMS TAB (إدارة مرافق المنتجع 🏡)
+// ─────────────────────────────────────────────
+interface FacilitiesAdminTabProps {
+  facilities: Facility[]
+  onRefresh: () => void
+  showToast: (msg: string, type?: 'success' | 'error') => void
+}
+
+const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onRefresh, showToast }) => {
+  const [showModal, setShowModal] = useState(false)
+  const [editingFacility, setEditingFacility] = useState<Facility | null>(null)
+  const [tagInput, setTagInput] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const [form, setForm] = useState({
+    title: '',
+    subtitle: '',
+    badge_text: '',
+    description: '',
+    image_url: '',
+    features: [] as string[],
+    privacy_note: 'مشمول بكامل الخصوصية',
+    cta_text: 'احجز هذه الوحدة',
+    display_order: '1',
+    is_active: true,
+  })
+
+  const openCreateModal = () => {
+    setEditingFacility(null)
+    setTagInput('')
+    setForm({
+      title: '',
+      subtitle: '',
+      badge_text: '',
+      description: '',
+      image_url: 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80',
+      features: ['خصوصية عائلية كاملة', 'نظافة وتعقيم دوري'],
+      privacy_note: 'مشمول بكامل الخصوصية',
+      cta_text: 'احجز هذه الوحدة',
+      display_order: String(facilities.length + 1),
+      is_active: true,
+    })
+    setShowModal(true)
+  }
+
+  const openEditModal = (f: Facility) => {
+    setEditingFacility(f)
+    setTagInput('')
+    setForm({
+      title: f.title,
+      subtitle: f.subtitle || '',
+      badge_text: f.badge_text || '',
+      description: f.description,
+      image_url: f.image_url,
+      features: Array.isArray(f.features) ? [...f.features] : [],
+      privacy_note: f.privacy_note || 'مشمول بكامل الخصوصية',
+      cta_text: f.cta_text || 'احجز هذه الوحدة',
+      display_order: String(f.display_order ?? 1),
+      is_active: f.is_active ?? true,
+    })
+    setShowModal(true)
+  }
+
+  const handleAddTag = () => {
+    const val = tagInput.trim()
+    if (!val) return
+    if (!form.features.includes(val)) {
+      setForm(prev => ({ ...prev, features: [...prev.features, val] }))
+    }
+    setTagInput('')
+  }
+
+  const handleRemoveTag = (index: number) => {
+    setForm(prev => ({ ...prev, features: prev.features.filter((_, i) => i !== index) }))
+  }
+
+  const handleToggleActive = async (f: Facility) => {
+    setTogglingId(f.id)
+    try {
+      if (f.id.startsWith('default-')) {
+        const payload = {
+          title: f.title,
+          subtitle: f.subtitle || null,
+          badge_text: f.badge_text || null,
+          description: f.description,
+          image_url: f.image_url,
+          features: f.features,
+          privacy_note: f.privacy_note || 'مشمول بكامل الخصوصية',
+          cta_text: f.cta_text || 'احجز هذه الوحدة',
+          display_order: f.display_order,
+          is_active: !f.is_active,
+        }
+        const { error } = await supabase.from('resort_facilities').insert([payload])
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('resort_facilities')
+          .update({ is_active: !f.is_active })
+          .eq('id', f.id)
+        if (error) throw error
+      }
+      showToast(f.is_active ? 'تم إخفاء المرفق من الموقع 👁️' : 'تم إظهار وتفعيل المرفق في الموقع ✅')
+      onRefresh()
+    } catch (err: any) {
+      showToast('⚠️ تعذر تحديث حالة المرفق: ' + (err.message || 'خطأ غير متوقع'), 'error')
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
+  const handleDelete = async (f: Facility) => {
+    if (!window.confirm(`هل أنت متأكد من رغبتك في حذف مرفق "${f.title}" نهائياً من الموقع؟`)) return
+    setDeletingId(f.id)
+    try {
+      if (!f.id.startsWith('default-')) {
+        const { error } = await supabase.from('resort_facilities').delete().eq('id', f.id)
+        if (error) throw error
+      }
+      showToast('تم حذف المرفق بنجاح 🗑️')
+      onRefresh()
+    } catch (err: any) {
+      showToast('⚠️ تعذر حذف المرفق: ' + (err.message || 'خطأ غير متوقع'), 'error')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.title.trim()) {
+      showToast('يرجى كتابة عنوان المرفق', 'error')
+      return
+    }
+    if (!form.description.trim()) {
+      showToast('يرجى كتابة الوصف التفصيلي للمرفق', 'error')
+      return
+    }
+    if (!form.image_url.trim()) {
+      showToast('يرجى تحديد رابط صورة المرفق', 'error')
+      return
+    }
+
+    setSaving(true)
+    const payload = {
+      title: form.title.trim(),
+      subtitle: form.subtitle.trim() || null,
+      badge_text: form.badge_text.trim() || null,
+      description: form.description.trim(),
+      image_url: form.image_url.trim(),
+      features: form.features,
+      privacy_note: form.privacy_note.trim() || 'مشمول بكامل الخصوصية',
+      cta_text: form.cta_text.trim() || 'احجز هذه الوحدة',
+      display_order: parseInt(form.display_order, 10) || 0,
+      is_active: form.is_active,
+    }
+
+    try {
+      if (editingFacility && !editingFacility.id.startsWith('default-')) {
+        const { error } = await supabase
+          .from('resort_facilities')
+          .update(payload)
+          .eq('id', editingFacility.id)
+        if (error) throw error
+        showToast('تم تحديث بيانات المرفق بنجاح ✅')
+      } else {
+        const { error } = await supabase
+          .from('resort_facilities')
+          .insert([payload])
+        if (error) throw error
+        showToast('تم إضافة المرفق الجديد ونشره بنجاح ✅')
+      }
+      setShowModal(false)
+      onRefresh()
+    } catch (err: any) {
+      showToast('⚠️ تعذر حفظ بيانات المرفق: ' + (err.message || 'خطأ غير متوقع'), 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const activeCount = facilities.filter(f => f.is_active).length
+
+  return (
+    <div className="space-y-6">
+      {/* Header & KPI Summary */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-3xl bg-slate-900/60 border border-white/10 backdrop-blur-md">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
+              <Palmtree size={20} />
+            </span>
+            <h2 className="text-xl font-bold text-white">إدارة مرافق الواحة والمنتجع (Bento CMS)</h2>
+          </div>
+          <p className="text-xs sm:text-sm text-gray-400">
+            تحكم كامل في تعديل وإضافة وإخفاء وترتيب مرافق الواحة التي تظهر في شبكة Bento بالصفحة الرئيسية
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs">
+            <span className="text-emerald-400 font-bold">{activeCount}</span>
+            <span className="text-gray-400">نشط في الموقع</span>
+            <span className="text-gray-600">/</span>
+            <span className="text-gray-300 font-bold">{facilities.length}</span>
+            <span className="text-gray-400">الإجمالي</span>
+          </div>
+
+          <button
+            onClick={openCreateModal}
+            className="btn-primary py-2.5 px-4 text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-900/30 whitespace-nowrap"
+          >
+            <Plus size={16} />
+            <span>إضافة مرفق جديد</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Facilities Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {facilities.map((f, index) => {
+          const tags = Array.isArray(f.features) ? f.features : []
+          return (
+            <div
+              key={f.id || index}
+              className={`rounded-3xl border transition-all duration-300 overflow-hidden flex flex-col justify-between ${
+                f.is_active
+                  ? 'bg-slate-900/70 border-white/10 hover:border-emerald-500/40 shadow-xl'
+                  : 'bg-slate-950/40 border-white/5 opacity-70 hover:opacity-100'
+              }`}
+            >
+              {/* Top Image Preview Banner */}
+              <div className="relative h-48 w-full overflow-hidden bg-slate-950">
+                <img
+                  src={f.image_url}
+                  alt={f.title}
+                  className="w-full h-full object-cover object-center select-none"
+                  onError={(e) => {
+                    // Fallback to placeholder if broken image
+                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80'
+                  }}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
+
+                {/* Badge Overlay */}
+                {f.badge_text && (
+                  <div className="absolute top-3.5 right-3.5">
+                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-950/80 border border-white/15 text-emerald-300 backdrop-blur-md shadow-md">
+                      {f.badge_text}
+                    </span>
+                  </div>
+                )}
+
+                {/* Display Order & Active Pill */}
+                <div className="absolute top-3.5 left-3.5 flex items-center gap-1.5">
+                  <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-black/70 border border-white/10 text-amber-300 backdrop-blur-md">
+                    ترتيب: #{f.display_order ?? (index + 1)}
+                  </span>
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold border backdrop-blur-md ${
+                      f.is_active
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : 'bg-red-500/20 text-red-300 border-red-500/40'
+                    }`}
+                  >
+                    {f.is_active ? 'ظاهر بالموقع' : 'مخفي مؤقتاً'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Card Body */}
+              <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold text-white leading-snug">
+                      {f.title}
+                    </h3>
+                    {f.subtitle && (
+                      <p className="text-xs text-emerald-400 font-medium mt-0.5">
+                        {f.subtitle}
+                      </p>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-gray-300 leading-relaxed line-clamp-3">
+                    {f.description}
+                  </p>
+
+                  {/* Feature Tags */}
+                  {tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {tags.map((tag, tIdx) => (
+                        <span
+                          key={tIdx}
+                          className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-white/5 text-gray-300 border border-white/5"
+                        >
+                          <CheckCircle2 size={10} className="text-emerald-400" />
+                          <span>{tag}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer Info & Actions */}
+                <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <span className="font-medium text-gray-300">الشمول:</span>
+                    <span>{f.privacy_note || 'مشمول بكامل الخصوصية'}</span>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                    {/* Toggle Active Button */}
+                    <button
+                      onClick={() => handleToggleActive(f)}
+                      disabled={togglingId === f.id}
+                      className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1 border transition-all ${
+                        f.is_active
+                          ? 'glass text-gray-300 hover:text-amber-300 hover:bg-amber-500/10'
+                          : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
+                      }`}
+                      title={f.is_active ? 'إخفاء المرفق من الموقع' : 'إظهار المرفق في الموقع'}
+                    >
+                      {togglingId === f.id ? (
+                        <Loader2 size={15} className="animate-spin text-emerald-400" />
+                      ) : f.is_active ? (
+                        <>
+                          <EyeOff size={14} />
+                          <span className="hidden sm:inline">إخفاء</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye size={14} />
+                          <span className="hidden sm:inline">إظهار</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Edit Button */}
+                    <button
+                      onClick={() => openEditModal(f)}
+                      className="glass p-2 rounded-xl text-xs font-semibold text-white hover:bg-white/15 flex items-center gap-1"
+                      title="تعديل بيانات المرفق"
+                    >
+                      <Edit3 size={14} className="text-emerald-400" />
+                      <span className="hidden sm:inline">تعديل</span>
+                    </button>
+
+                    {/* Delete Button */}
+                    <button
+                      onClick={() => handleDelete(f)}
+                      disabled={deletingId === f.id}
+                      className="p-2 rounded-xl text-xs font-semibold text-red-400 hover:text-red-300 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors"
+                      title="حذف المرفق"
+                    >
+                      {deletingId === f.id ? (
+                        <Loader2 size={15} className="animate-spin text-red-400" />
+                      ) : (
+                        <Trash2 size={14} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Edit / Create Facility Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="card glass-strong max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar p-6 border border-white/15 shadow-2xl">
+            <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
+                  <Palmtree size={18} />
+                </span>
+                <h3 className="font-bold text-white text-base">
+                  {editingFacility ? 'تعديل بيانات المرفق' : 'إضافة مرفق جديد إلى المنتجع'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowModal(false)}
+                className="glass p-2 rounded-xl text-gray-400 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSave} className="space-y-4 text-right">
+              {/* Title & Subtitle */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-300 mb-1 block font-medium">عنوان المرفق *</label>
+                  <input
+                    type="text"
+                    required
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    className="input-field text-xs sm:text-sm"
+                    placeholder="مثال: مسبح متدرج وألعاب مائية"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-300 mb-1 block font-medium">العنوان الفرعي الترويجي</label>
+                  <input
+                    type="text"
+                    value={form.subtitle}
+                    onChange={(e) => setForm({ ...form, subtitle: e.target.value })}
+                    className="input-field text-xs sm:text-sm"
+                    placeholder="مثال: انتعاش وخصوصية مطلقة لجميع الأعمار"
+                  />
+                </div>
+              </div>
+
+              {/* Badge & Display Order */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-300 mb-1 block font-medium">
+                    نص الشارة العلوية (Badge)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.badge_text}
+                    onChange={(e) => setForm({ ...form, badge_text: e.target.value })}
+                    className="input-field text-xs sm:text-sm"
+                    placeholder="مثال: انتعاش ومرح عائلي 🌊"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-300 mb-1 block font-medium">ترتيب العرض (Display Order)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.display_order}
+                    onChange={(e) => setForm({ ...form, display_order: e.target.value })}
+                    className="input-field text-xs sm:text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="text-xs text-gray-300 mb-1 block font-medium">الوصف التفصيلي للمرفق *</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  className="input-field text-xs sm:text-sm resize-none"
+                  placeholder="اكتب وصفاً جذاباً يشرح مزايا وتجهيزات هذا المرفق للزوار..."
+                />
+              </div>
+
+              {/* Image URL & Live Preview */}
+              <div>
+                <label className="text-xs text-gray-300 mb-1 block font-medium">رابط صورة المرفق (Image URL) *</label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    required
+                    value={form.image_url}
+                    onChange={(e) => setForm({ ...form, image_url: e.target.value })}
+                    className="input-field text-xs sm:text-sm flex-1 font-mono"
+                    placeholder="https://images.unsplash.com/..."
+                    dir="ltr"
+                  />
+                </div>
+
+                {/* Live Preview Container */}
+                {form.image_url && (
+                  <div className="mt-2 relative h-36 w-full rounded-2xl overflow-hidden border border-white/10 bg-black/40">
+                    <img
+                      src={form.image_url}
+                      alt="معاينة المرفق"
+                      className="w-full h-full object-cover object-center"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80'
+                      }}
+                    />
+                    <div className="absolute bottom-2 right-2 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md text-[10px] text-white flex items-center gap-1">
+                      <ImageIcon size={12} className="text-emerald-400" />
+                      <span>معاينة الصورة المباشرة</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Dynamic Feature Tags */}
+              <div>
+                <label className="text-xs text-gray-300 mb-1 block font-medium">
+                  النقاط والمميزات (Tags)
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleAddTag()
+                      }
+                    }}
+                    className="input-field text-xs sm:text-sm flex-1"
+                    placeholder="أدخل ميزة واضغط إضافة (مثال: ألعاب مائية للأطفال)"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddTag}
+                    className="btn-primary py-2 px-4 text-xs font-bold"
+                  >
+                    إضافة +
+                  </button>
+                </div>
+
+                {/* Tag Chips List */}
+                <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 rounded-xl bg-white/5 border border-white/10">
+                  {form.features.length === 0 ? (
+                    <span className="text-xs text-gray-500">لا توجد مميزات مضافة بعد. أضف نقطة أعلاه.</span>
+                  ) : (
+                    form.features.map((tag, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-medium"
+                      >
+                        <span>{tag}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTag(idx)}
+                          className="hover:text-red-300 transition-colors"
+                        >
+                          <X size={13} />
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Privacy Note & CTA */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-300 mb-1 block font-medium">ملاحظة الشمول / الخصوصية</label>
+                  <input
+                    type="text"
+                    value={form.privacy_note}
+                    onChange={(e) => setForm({ ...form, privacy_note: e.target.value })}
+                    className="input-field text-xs sm:text-sm"
+                    placeholder="مثال: مشمول بكامل الخصوصية"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-300 mb-1 block font-medium">نص زر الإجراء (CTA)</label>
+                  <input
+                    type="text"
+                    value={form.cta_text}
+                    onChange={(e) => setForm({ ...form, cta_text: e.target.value })}
+                    className="input-field text-xs sm:text-sm"
+                    placeholder="احجز هذه الوحدة"
+                  />
+                </div>
+              </div>
+
+              {/* Active Toggle Switch */}
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/5 border border-white/10">
+                <div>
+                  <p className="text-xs font-bold text-white">تفعيل وظهور المرفق في الصفحة الرئيسية</p>
+                  <p className="text-[11px] text-gray-400">عند إلغاء التفعيل، سيتم إخفاء البطاقة من الموقع فوراً</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.is_active}
+                    onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500" />
+                </label>
+              </div>
+
+              {/* Form Buttons */}
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="glass py-2.5 px-5 text-xs text-gray-300 hover:text-white rounded-xl"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="btn-primary py-2.5 px-6 text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-900/30"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      <span>جاري الحفظ...</span>
+                    </>
+                  ) : (
+                    <span>{editingFacility ? 'حفظ التعديلات' : 'نشر المرفق الآن'}</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
 // MAIN ADMIN PAGE
 // ─────────────────────────────────────────────
-type Tab = 'overview' | 'pending' | 'bookings' | 'water' | 'properties' | 'addons' | 'settings'
+type Tab = 'overview' | 'pending' | 'bookings' | 'water' | 'facilities' | 'properties' | 'addons' | 'settings'
 
 const AdminPage: React.FC = () => {
   const { profile } = useAuth()
@@ -1767,6 +2388,7 @@ const AdminPage: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [waterOrders, setWaterOrders] = useState<WaterOrder[]>([])
   const [waterSizes, setWaterSizes] = useState<WaterTankerSize[]>(DEFAULT_WATER_SIZES)
+  const [facilities, setFacilities] = useState<Facility[]>(DEFAULT_FACILITIES)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [properties, setProperties] = useState<Property[]>([])
   const [addons, setAddons] = useState<Addon[]>([])
@@ -1799,7 +2421,7 @@ const AdminPage: React.FC = () => {
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [{ data: b }, { data: s }, { data: p }, { data: a }, { data: wo }, { data: ws }] = await Promise.all([
+    const [{ data: b }, { data: s }, { data: p }, { data: a }, { data: wo }, { data: ws }, { data: fac }] = await Promise.all([
       supabase
         .from('bookings')
         .select('*, properties(name), booking_addons(*, addons(*))')
@@ -1809,6 +2431,7 @@ const AdminPage: React.FC = () => {
       supabase.from('addons').select('*').order('name'),
       supabase.from('water_orders').select('*').order('created_at', { ascending: false }),
       supabase.from('water_tanker_sizes').select('*').order('display_order', { ascending: true }),
+      supabase.from('resort_facilities').select('*').order('display_order', { ascending: true }),
     ])
     if (b) setBookings(b as any)
     if (s) setSettings(s)
@@ -1817,6 +2440,8 @@ const AdminPage: React.FC = () => {
     if (wo) setWaterOrders(wo as any)
     if (ws && ws.length > 0) setWaterSizes(ws as any)
     else setWaterSizes(DEFAULT_WATER_SIZES)
+    if (fac && fac.length > 0) setFacilities(fac as any)
+    else setFacilities(DEFAULT_FACILITIES)
     setLoading(false)
   }, [])
 
@@ -1931,6 +2556,7 @@ const AdminPage: React.FC = () => {
     { id: 'pending', label: 'بانتظار الإجراء', icon: <Clock size={16} />, badge: allPending.length },
     { id: 'bookings', label: 'جميع الحجوزات', icon: <CalendarCheck size={16} /> },
     { id: 'water', label: 'وايتات الماء 💧', icon: <Droplets size={16} className="text-teal-400" />, badge: newWaterOrdersCount },
+    { id: 'facilities', label: 'إدارة المرافق 🏡', icon: <Palmtree size={16} className="text-emerald-400" /> },
     { id: 'properties', label: 'الوحدات', icon: <Home size={16} /> },
     { id: 'addons', label: 'الإضافات', icon: <Zap size={16} /> },
     { id: 'settings', label: 'الإعدادات', icon: <Settings size={16} /> },
@@ -2261,6 +2887,14 @@ const AdminPage: React.FC = () => {
           <WaterOrdersTab
             orders={waterOrders}
             sizes={waterSizes}
+            onRefresh={fetchAll}
+            showToast={showToast}
+          />
+        )}
+
+        {activeTab === 'facilities' && (
+          <FacilitiesAdminTab
+            facilities={facilities}
             onRefresh={fetchAll}
             showToast={showToast}
           />

@@ -174,6 +174,50 @@ export type Database = {
           created_at?: string
         }
       }
+      resort_facilities: {
+        Row: {
+          id: string
+          title: string
+          subtitle: string | null
+          badge_text: string | null
+          description: string
+          image_url: string
+          features: string[]
+          privacy_note: string | null
+          cta_text: string | null
+          display_order: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          title: string
+          subtitle?: string | null
+          badge_text?: string | null
+          description: string
+          image_url: string
+          features?: string[]
+          privacy_note?: string | null
+          cta_text?: string | null
+          display_order?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          title?: string
+          subtitle?: string | null
+          badge_text?: string | null
+          description?: string
+          image_url?: string
+          features?: string[]
+          privacy_note?: string | null
+          cta_text?: string | null
+          display_order?: number
+          is_active?: boolean
+          created_at?: string
+        }
+      }
     }
   }
 }
