@@ -1,0 +1,13 @@
+# Khalid Resort App — Cloudflare Pages Configuration
+
+[build]
+  command = "npm run build"
+  destination = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
