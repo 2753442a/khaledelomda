@@ -1916,15 +1916,15 @@ const AdminPage: React.FC = () => {
     })
   }, [bookings, searchQuery, statusFilter])
 
+  const newWaterOrdersCount = useMemo(() => {
+    return waterOrders.filter(o => o.status === 'new').length
+  }, [waterOrders])
+
   if (loading && bookings.length === 0) return (
     <div className="min-h-screen flex items-center justify-center">
       <Loader2 size={32} className="text-emerald-400 animate-spin" />
     </div>
   )
-
-  const newWaterOrdersCount = useMemo(() => {
-    return waterOrders.filter(o => o.status === 'new').length
-  }, [waterOrders])
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview', label: 'نظرة عامة', icon: <BarChart3 size={16} /> },
