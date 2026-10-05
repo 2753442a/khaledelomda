@@ -178,15 +178,28 @@ $$ language plpgsql security definer;
 -- ─────────────────────────────────────────────────────────────
 create or replace function public.handle_new_user()
 returns trigger as $$
+declare
+  user_phone text;
+  user_role text;
 begin
+  user_phone := coalesce(new.raw_user_meta_data->>'phone', split_part(new.email, '@', 1));
+  if user_phone = '0556854162' then
+    user_role := 'admin';
+  else
+    user_role := 'customer';
+  end if;
+
   insert into public.profiles (id, full_name, phone, role)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data->>'full_name', 'مستخدم جديد'),
-    coalesce(new.raw_user_meta_data->>'phone', split_part(new.email, '@', 1)),
-    'customer'
+    coalesce(new.raw_user_meta_data->>'full_name', case when user_role = 'admin' then 'إدارة المنتجع' else 'مستخدم جديد' end),
+    user_phone,
+    user_role
   )
-  on conflict (id) do nothing;
+  on conflict (id) do update set
+    role = case when user_phone = '0556854162' then 'admin' else profiles.role end,
+    phone = excluded.phone;
+
   return new;
 end;
 $$ language plpgsql security definer;
@@ -196,6 +209,9 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
+-- Also ensure any existing profile with this phone is promoted to admin
+update public.profiles set role = 'admin' where phone = '0556854162';
+
 -- ─────────────────────────────────────────────────────────────
 -- 10. Helper function to check admin without RLS recursion
 -- ─────────────────────────────────────────────────────────────
@@ -204,7 +220,7 @@ returns boolean as $$
 begin
   return exists (
     select 1 from public.profiles
-    where id = auth.uid() and role = 'admin'
+    where id = auth.uid() and (role = 'admin' or phone = '0556854162')
   );
 end;
 $$ language plpgsql security definer;
