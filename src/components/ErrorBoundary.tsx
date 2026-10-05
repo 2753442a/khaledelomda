@@ -44,11 +44,11 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
 
             <h2 className="text-xl font-bold text-white mb-2">
-              {this.props.fallbackTitle || 'عذراً، حدث خطأ غير متوقع أثناء تحميل هذه النافذة.'}
+              {this.props.fallbackTitle || 'عذراً، حدث خطأ غير متوقع'}
             </h2>
 
             <p className="text-sm text-gray-400 mb-6 leading-relaxed">
-              {this.props.fallbackMessage || 'واجه النظام مشكلة مؤقتة في معالجة هذه الصفحة. يمكنك إعادة المحاولة الآن أو العودة للرئيسية.'}
+              {this.props.fallbackMessage || 'يرجى المحاولة مرة أخرى أو التحقق من الاتصال بالشبكة'}
             </p>
 
             {this.state.error?.message && (
@@ -59,19 +59,19 @@ export class ErrorBoundary extends Component<Props, State> {
 
             <div className="flex flex-col sm:flex-row items-center gap-3 justify-center">
               <button
-                onClick={this.handleReset}
+                onClick={this.handleReload}
                 className="btn-primary w-full sm:w-auto py-2.5 px-5 flex items-center justify-center gap-2"
               >
                 <RefreshCw size={16} />
-                <span>إعادة المحاولة</span>
+                <span>إعادة تحميل الصفحة</span>
               </button>
 
               <button
-                onClick={this.handleReload}
+                onClick={this.handleReset}
                 className="glass w-full sm:w-auto py-2.5 px-5 rounded-xl hover:bg-white/10 transition-colors text-sm text-gray-300 flex items-center justify-center gap-2"
               >
                 <Home size={16} />
-                <span>تحديث الصفحة</span>
+                <span>إعادة المحاولة</span>
               </button>
             </div>
           </div>
