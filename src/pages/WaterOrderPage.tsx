@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatCurrency, generateWhatsAppLink } from '../lib/utils'
+import { WaterLocationPicker } from '../components/WaterLocationPicker'
 import {
   Droplets, MapPin, Navigation, Phone, User, CheckCircle2,
   AlertCircle, Loader2, MessageCircle, Home, ShieldCheck,
@@ -54,10 +55,8 @@ export const WaterOrderPage: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'pos_on_delivery' | 'bank_transfer'>('cash')
   const [notes, setNotes] = useState('')
 
-  // Geolocation state
+  // Geolocation state (managed partially by WaterLocationPicker)
   const [googleMapsUrl, setGoogleMapsUrl] = useState<string | null>(null)
-  const [locating, setLocating] = useState(false)
-  const [locationSuccess, setLocationSuccess] = useState(false)
 
   // Submission state
   const [submitting, setSubmitting] = useState(false)
@@ -107,38 +106,16 @@ export const WaterOrderPage: React.FC = () => {
     setTimeout(() => setToastMsg(null), 4000)
   }
 
-  // Geolocation handler using zero-cost native HTML5 API
-  const handleGetLocation = () => {
-    if (!navigator.geolocation) {
-      showToast('⚠️ متصفحك لا يدعم خاصية تحديد الموقع الجغرافي')
-      return
-    }
-
-    setLocating(true)
-    setErrorMsg(null)
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = position.coords.latitude.toFixed(6)
-        const lng = position.coords.longitude.toFixed(6)
-        const mapUrl = `https://www.google.com/maps?q=${lat},${lng}`
-        setGoogleMapsUrl(mapUrl)
-        setLocationSuccess(true)
-        setLocating(false)
-        showToast('تم التقاط الموقع بنجاح ✅')
-      },
-      (error) => {
-        setLocating(false)
-        setLocationSuccess(false)
-        showToast('يرجى كتابة اسم الحي والشارع يدوياً أو تفعيل خدمة الموقع')
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 0,
-      }
-    )
-  }
+  // Location callback from WaterLocationPicker (interactive map)
+  const handleLocationChange = useCallback(
+    (data: { lat: number; lng: number; googleMapsUrl: string; district: string; streetAddress: string }) => {
+      setGoogleMapsUrl(data.googleMapsUrl)
+      if (data.district && !district) setDistrict(data.district)
+      if (data.streetAddress && !streetAddress) setStreetAddress(data.streetAddress)
+      showToast('تم تحديد الموقع بنجاح ✅')
+    },
+    [district, streetAddress]
+  )
 
   const selectedSize = sizes.find(s => s.id === selectedSizeId) || sizes[0]
 
@@ -432,54 +409,12 @@ ${order.notes ? `📝 *ملاحظات إضافية:* ${order.notes}\nـــــ�
               </div>
             </div>
 
-            {/* Smart GPS Capture Button */}
-            <div className="p-4 rounded-2xl bg-teal-500/10 border border-teal-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <p className="text-sm font-bold text-teal-200 flex items-center gap-1.5">
-                  <Navigation size={16} className="text-teal-400 animate-pulse" />
-                  مشاركة الموقع التلقائي عبر الـ GPS
-                </p>
-                <p className="text-xs text-gray-300">
-                  {locationSuccess
-                    ? 'تم تحديد الإحداثيات بنجاح ودقة عالية ✅'
-                    : 'اضغط على الزر لتحديد موقعك الجغرافي تلقائياً دون الحاجة لكتابة إحداثيات'}
-                </p>
-                {googleMapsUrl && (
-                  <a
-                    href={googleMapsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block text-[11px] text-teal-300 underline font-mono hover:text-teal-200 mt-1"
-                  >
-                    معاينة موقعك على خرائط Google ↗
-                  </a>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={handleGetLocation}
-                disabled={locating}
-                className="px-5 py-3 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-teal-500/20 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 shrink-0"
-              >
-                {locating ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>جاري تحديد الموقع...</span>
-                  </>
-                ) : locationSuccess ? (
-                  <>
-                    <CheckCircle2 size={16} />
-                    <span>تحديث موقعي 📍</span>
-                  </>
-                ) : (
-                  <>
-                    <MapPin size={16} />
-                    <span>📍 مشاركة موقعي الحالي بدقة</span>
-                  </>
-                )}
-              </button>
-            </div>
+            {/* Interactive Map (Leaflet) */}
+            <WaterLocationPicker
+              onLocationChange={handleLocationChange}
+              initialDistrict={district}
+              initialStreetAddress={streetAddress}
+            />
 
             {/* District & Street */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
