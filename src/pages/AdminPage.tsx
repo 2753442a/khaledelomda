@@ -9,7 +9,7 @@ import {
 } from '../lib/utils'
 import {
   BarChart3, CalendarCheck, Clock, Settings, Users, Loader2,
-  Check, X, MessageCircle, Trash2, RefreshCw, Plus, Edit3,
+  Check, X, MessageCircle, Trash2, RefreshCw, Plus, Edit3, Save,
   AlertTriangle, Shield, ChevronRight, ChevronLeft, Home,
   CheckCircle2, XCircle, Banknote, Eye, EyeOff, Info, Phone, Calendar,
   CreditCard, Search, Filter, AlertCircle, FileText, CheckCircle,
@@ -321,8 +321,10 @@ const ActionableBookingCard: React.FC<{
   onConfirm: (booking: Booking) => void
   onCancel: (booking: Booking) => void
   onOpenDetails: (booking: Booking) => void
+  onEdit?: (booking: Booking) => void
+  onDelete?: (booking: Booking) => void
   loading: boolean
-}> = ({ booking, onConfirm, onCancel, onOpenDetails, loading }) => {
+}> = ({ booking, onConfirm, onCancel, onOpenDetails, onEdit, onDelete, loading }) => {
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null)
   const [showReceipt, setShowReceipt] = useState(false)
 
@@ -427,6 +429,28 @@ const ActionableBookingCard: React.FC<{
           <span>تفاصيل</span>
         </button>
 
+        {onEdit && (
+          <button
+            onClick={() => onEdit(booking)}
+            className="glass text-xs py-2 px-3 text-blue-400 hover:text-blue-300 rounded-xl flex items-center gap-1.5"
+            title="تعديل الحجز"
+          >
+            <Edit3 size={13} />
+            <span>تعديل</span>
+          </button>
+        )}
+
+        {onDelete && (
+          <button
+            onClick={() => onDelete(booking)}
+            className="glass text-xs py-2 px-3 text-red-400 hover:text-red-300 rounded-xl flex items-center gap-1.5"
+            title="حذف الحجز نهائياً"
+          >
+            <Trash2 size={13} />
+            <span>حذف</span>
+          </button>
+        )}
+
         <a
           href={generateWhatsAppLink(booking.customer_phone, getBookingWhatsAppMsg(booking))}
           target="_blank"
@@ -449,7 +473,9 @@ const BookingDetailsModal: React.FC<{
   onClose: () => void
   onConfirm: (booking: Booking) => void
   onCancel: (booking: Booking) => void
-}> = ({ booking, onClose, onConfirm, onCancel }) => {
+  onEdit?: (booking: Booking) => void
+  onDelete?: (booking: Booking) => void
+}> = ({ booking, onClose, onConfirm, onCancel, onEdit, onDelete }) => {
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null)
   const [loadingReceipt, setLoadingReceipt] = useState(false)
 
@@ -685,6 +711,30 @@ const BookingDetailsModal: React.FC<{
               <MessageCircle size={14} />
               <span>مراسلة واتساب</span>
             </a>
+            {onEdit && (
+              <button
+                onClick={() => {
+                  onClose()
+                  onEdit(booking)
+                }}
+                className="glass text-xs py-2.5 px-4 text-blue-400 hover:text-blue-300 rounded-xl flex items-center gap-1.5 transition-colors"
+              >
+                <Edit3 size={14} />
+                <span>تعديل الحجز ✏️</span>
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={() => {
+                  onClose()
+                  onDelete(booking)
+                }}
+                className="glass text-xs py-2.5 px-4 text-red-400 hover:text-red-300 rounded-xl flex items-center gap-1.5 transition-colors"
+              >
+                <Trash2 size={14} />
+                <span>حذف الحجز 🗑️</span>
+              </button>
+            )}
           </div>
 
           <button
@@ -835,6 +885,354 @@ const CancelActionModal: React.FC<{
 }
 
 // ─────────────────────────────────────────────
+// DELETE BOOKING CONFIRM MODAL
+// ─────────────────────────────────────────────
+const DeleteBookingConfirmModal: React.FC<{
+  booking: Booking | null
+  onClose: () => void
+  onConfirm: (booking: Booking) => Promise<void>
+  loading: boolean
+}> = ({ booking, onClose, onConfirm, loading }) => {
+  if (!booking) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="card glass-strong max-w-md w-full p-6 border border-red-500/40 shadow-2xl animate-scale-in">
+        <div className="w-14 h-14 rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-4 border border-red-500/30">
+          <Trash2 size={28} />
+        </div>
+
+        <h3 className="text-lg font-bold text-white text-center mb-2">تأكيد حذف الحجز نهائياً</h3>
+
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-4 text-xs text-gray-300 space-y-1.5">
+          <div className="flex justify-between">
+            <span className="text-gray-400">العميل:</span>
+            <span className="font-bold text-white">{booking.customer_name}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-400">الجوال:</span>
+            <span className="font-mono text-gray-200" dir="ltr">{booking.customer_phone}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-400">تاريخ الحجز:</span>
+            <span className="font-bold text-emerald-400">{formatShortDate(booking.booking_date)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-400">المبلغ الإجمالي:</span>
+            <span className="font-bold text-amber-400">{formatCurrency(booking.total_amount)}</span>
+          </div>
+        </div>
+
+        <p className="text-xs text-red-300 mb-6 leading-relaxed bg-black/30 p-2.5 rounded-lg border border-red-500/20">
+          ⚠️ <strong>تحذير هام:</strong> سيتم حذف سجل هذا الحجز نهائياً من قاعدة البيانات، وسيتم إلغاء قفل التاريخ في التقويم فوراً. لا يمكن التراجع عن هذا الإجراء!
+        </p>
+
+        <div className="flex items-center gap-3 justify-center">
+          <button
+            onClick={() => onConfirm(booking)}
+            disabled={loading}
+            className="btn-danger w-full py-2.5 font-bold shadow-lg shadow-red-500/20 flex items-center justify-center gap-2"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+            <span>نعم، حذف الحجز الآن 🗑️</span>
+          </button>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="glass w-full py-2.5 rounded-xl text-gray-400 hover:text-white"
+          >
+            إلغاء وتراجع
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// EDIT BOOKING MODAL
+// ─────────────────────────────────────────────
+interface EditBookingModalProps {
+  booking: Booking | null
+  properties: Property[]
+  onClose: () => void
+  onSuccess: () => Promise<void> | void
+  showToast: (msg: string, type?: 'success' | 'error') => void
+}
+
+const EditBookingModal: React.FC<EditBookingModalProps> = ({
+  booking,
+  properties,
+  onClose,
+  onSuccess,
+  showToast,
+}) => {
+  if (!booking) return null
+
+  const [customerName, setCustomerName] = useState(booking.customer_name)
+  const [customerPhone, setCustomerPhone] = useState(booking.customer_phone)
+  const [propertyId, setPropertyId] = useState(booking.property_id)
+  const [bookingDate, setBookingDate] = useState(booking.booking_date)
+  const [totalAmount, setTotalAmount] = useState(String(booking.total_amount))
+  const [depositAmount, setDepositAmount] = useState(String(booking.deposit_amount))
+  const [paymentMethod, setPaymentMethod] = useState(booking.payment_method || 'bank_transfer')
+  const [status, setStatus] = useState(booking.status)
+  const [cancellationReason, setCancellationReason] = useState(booking.cancellation_reason || '')
+  const [saving, setSaving] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!customerName.trim()) {
+      showToast('يرجى إدخال اسم العميل', 'error')
+      return
+    }
+    if (!customerPhone.trim()) {
+      showToast('يرجى إدخال رقم جوال العميل', 'error')
+      return
+    }
+    if (!bookingDate) {
+      showToast('يرجى تحديد تاريخ الحجز', 'error')
+      return
+    }
+
+    setSaving(true)
+    try {
+      // If booking date changed, update check_in and check_out
+      let checkInISO = booking.check_in
+      let checkOutISO = booking.check_out
+
+      if (bookingDate !== booking.booking_date) {
+        checkInISO = `${bookingDate}T15:30:00Z`
+        const d = new Date(bookingDate)
+        d.setDate(d.getDate() + 1)
+        const nextDayStr = d.toISOString().slice(0, 10)
+        checkOutISO = `${nextDayStr}T11:30:00Z`
+      }
+
+      const updateData: any = {
+        customer_name: customerName.trim(),
+        customer_phone: customerPhone.trim(),
+        property_id: propertyId,
+        booking_date: bookingDate,
+        check_in: checkInISO,
+        check_out: checkOutISO,
+        total_amount: Number(totalAmount) || 0,
+        deposit_amount: Number(depositAmount) || 0,
+        payment_method: paymentMethod,
+        status: status,
+      }
+
+      if (status === 'cancelled') {
+        updateData.cancellation_reason = cancellationReason.trim() || 'أُلغي من قبل إدارة المنتجع'
+        if (!booking.cancelled_at) {
+          updateData.cancelled_at = new Date().toISOString()
+        }
+      } else if (booking.status === 'cancelled') {
+        updateData.cancellation_reason = null
+        updateData.cancelled_at = null
+      }
+
+      const { error } = await supabase
+        .from('bookings')
+        .update(updateData)
+        .eq('id', booking.id)
+
+      if (error) {
+        if (error.message?.includes('unique_property_date')) {
+          showToast('⚠️ هذا التاريخ محجوز مسبقاً لهذه الوحدة! اختر تاريخاً آخر.', 'error')
+        } else {
+          showToast('⚠️ تعذر حفظ التعديلات: ' + error.message, 'error')
+        }
+        return
+      }
+
+      showToast('تم تحديث بيانات الحجز بنجاح ✅', 'success')
+      await onSuccess()
+      onClose()
+    } catch (err: any) {
+      showToast('⚠️ حدث خطأ غير متوقع: ' + (err?.message || ''), 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="card glass-strong max-w-xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar p-6 border border-white/15 shadow-2xl animate-scale-in">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+              <Edit3 size={20} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>تعديل بيانات الحجز #{booking.id.slice(0, 8)}</span>
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                تعديل وتحديث بيانات العميل والتواريخ والمبالغ المالية
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="glass p-2 rounded-xl text-gray-400 hover:text-white transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Customer Name & Phone */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1.5">اسم العميل *</label>
+              <input
+                type="text"
+                required
+                value={customerName}
+                onChange={e => setCustomerName(e.target.value)}
+                className="input-field text-sm"
+                placeholder="اسم العميل الكامل"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1.5">رقم الجوال *</label>
+              <input
+                type="tel"
+                required
+                dir="ltr"
+                value={customerPhone}
+                onChange={e => setCustomerPhone(e.target.value)}
+                className="input-field text-sm font-mono text-right"
+                placeholder="05XXXXXXXX"
+              />
+            </div>
+          </div>
+
+          {/* Property & Booking Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1.5">الوحدة المحجوزة *</label>
+              <select
+                value={propertyId}
+                onChange={e => setPropertyId(e.target.value)}
+                className="input-field text-sm bg-[#161b22] cursor-pointer"
+              >
+                {properties.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1.5">تاريخ الحجز *</label>
+              <input
+                type="date"
+                required
+                value={bookingDate}
+                onChange={e => setBookingDate(e.target.value)}
+                className="input-field text-sm cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {/* Pricing */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1.5">المبلغ الإجمالي (ر.س) *</label>
+              <input
+                type="number"
+                min="0"
+                step="50"
+                required
+                value={totalAmount}
+                onChange={e => setTotalAmount(e.target.value)}
+                className="input-field text-sm font-bold text-emerald-400"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1.5">مبلغ العربون (ر.س) *</label>
+              <input
+                type="number"
+                min="0"
+                step="50"
+                required
+                value={depositAmount}
+                onChange={e => setDepositAmount(e.target.value)}
+                className="input-field text-sm font-bold text-amber-400"
+              />
+            </div>
+          </div>
+
+          {/* Payment Method & Status */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1.5">طريقة الدفع</label>
+              <select
+                value={paymentMethod}
+                onChange={e => setPaymentMethod(e.target.value)}
+                className="input-field text-sm bg-[#161b22] cursor-pointer"
+              >
+                <option value="bank_transfer">تحويل بنكي</option>
+                <option value="cash_on_arrival">نقداً عند الوصول (يدوي)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1.5">حالة الحجز *</label>
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value)}
+                className="input-field text-sm bg-[#161b22] cursor-pointer font-bold"
+              >
+                <option value="confirmed">✅ مؤكد (معتمد)</option>
+                <option value="pending_verification">⏳ بانتظار التحقق من الإيصال</option>
+                <option value="pending_receipt">⏳ بانتظار الإيصال / دفع يدوي</option>
+                <option value="completed">🎉 مكتمل</option>
+                <option value="cancelled">❌ ملغي</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Cancellation reason if cancelled */}
+          {status === 'cancelled' && (
+            <div>
+              <label className="block text-xs font-medium text-red-300 mb-1.5">سبب الإلغاء</label>
+              <input
+                type="text"
+                value={cancellationReason}
+                onChange={e => setCancellationReason(e.target.value)}
+                placeholder="أدخل سبب إلغاء الحجز..."
+                className="input-field text-sm border-red-500/30"
+              />
+            </div>
+          )}
+
+          {/* Footer Actions */}
+          <div className="flex items-center gap-3 justify-end pt-4 border-t border-white/10">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="glass py-2.5 px-5 rounded-xl text-gray-400 hover:text-white text-xs"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="btn-primary py-2.5 px-6 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+            >
+              {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+              <span>حفظ التعديلات</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
 // SETTINGS TAB
 // ─────────────────────────────────────────────
 const SettingsTab: React.FC<{ settings: Settings; onSave: (s: Settings) => Promise<void> }> = ({ settings: initial, onSave }) => {
@@ -940,9 +1338,10 @@ const SettingsTab: React.FC<{ settings: Settings; onSave: (s: Settings) => Promi
 // ─────────────────────────────────────────────
 // PROPERTIES TAB
 // ─────────────────────────────────────────────
-const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }> = ({ properties, onRefresh }) => {
+const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void; showToast?: (msg: string, type?: 'success' | 'error') => void }> = ({ properties, onRefresh, showToast }) => {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -1067,6 +1466,32 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
   const toggleActive = async (p: Property) => {
     await supabase.from('properties').update({ is_active: !p.is_active }).eq('id', p.id)
     onRefresh()
+  }
+
+  const handleDelete = async (p: Property) => {
+    if (!window.confirm(`هل أنت متأكد من رغبتك في حذف وحدة "${p.name}" نهائياً من النظام؟\n\n⚠️ ملاحظة: إذا كانت هناك حجوزات سابقة مرتبطة بهذه الوحدة، يُنصح بتعطيلها بدلاً من حذفها منعاً لأي تعارض.`)) {
+      return
+    }
+
+    setDeletingId(p.id)
+    try {
+      const { error } = await supabase.from('properties').delete().eq('id', p.id)
+      if (error) {
+        if (error.code === '23503' || error.message.includes('foreign key') || error.message.includes('bookings')) {
+          const msg = '⚠️ لا يمكن حذف هذه الوحدة لوجود حجوزات سابقة مرتبطة بها في السجل. يمكنك النقر على زر "تعطيل" لإخفائها من الحجز دون حذف سجلاتها.'
+          showToast ? showToast(msg, 'error') : alert(msg)
+        } else {
+          showToast ? showToast('⚠️ تعذر الحذف: ' + error.message, 'error') : alert('تعذر الحذف: ' + error.message)
+        }
+      } else {
+        showToast ? showToast('تم حذف الوحدة بنجاح 🗑️', 'success') : alert('تم حذف الوحدة بنجاح')
+        onRefresh()
+      }
+    } catch (err: any) {
+      showToast ? showToast('⚠️ خطأ غير متوقع: ' + (err.message || ''), 'error') : alert('خطأ غير متوقع')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   return (
@@ -1285,12 +1710,33 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
                     <h4 className="font-bold text-white text-base">{p.name}</h4>
                     {!p.is_active && <span className="text-xs badge-cancelled px-2 py-0.5 rounded-full">معطّل</span>}
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => startEdit(p)} className="glass p-2 rounded-lg hover:bg-white/10" title="تعديل">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => startEdit(p)}
+                      className="glass p-2 rounded-xl hover:bg-white/10 text-emerald-400 flex items-center gap-1 text-xs"
+                      title="تعديل بيانات وأسعار وصور الوحدة"
+                    >
                       <Edit3 size={14} />
+                      <span className="hidden sm:inline">تعديل</span>
                     </button>
-                    <button onClick={() => toggleActive(p)} className={`glass p-2 rounded-lg ${p.is_active ? 'hover:bg-red-500/10' : 'hover:bg-emerald-500/10'}`} title={p.is_active ? 'تعطيل' : 'تفعيل'}>
-                      {p.is_active ? <XCircle size={14} className="text-red-400" /> : <CheckCircle2 size={14} className="text-emerald-400" />}
+
+                    <button
+                      onClick={() => toggleActive(p)}
+                      className={`glass p-2 rounded-xl text-xs flex items-center gap-1 ${p.is_active ? 'hover:bg-red-500/10 text-gray-300' : 'hover:bg-emerald-500/10 text-emerald-400'}`}
+                      title={p.is_active ? 'تعطيل الوحدة مؤقتاً' : 'تفعيل الوحدة للحجز'}
+                    >
+                      {p.is_active ? <XCircle size={14} className="text-amber-400" /> : <CheckCircle2 size={14} className="text-emerald-400" />}
+                      <span className="hidden sm:inline">{p.is_active ? 'تعطيل' : 'تفعيل'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleDelete(p)}
+                      disabled={deletingId === p.id}
+                      className="p-2 rounded-xl text-xs text-red-400 hover:text-red-300 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors flex items-center gap-1"
+                      title="حذف الوحدة نهائياً"
+                    >
+                      {deletingId === p.id ? <Loader2 size={14} className="animate-spin text-red-400" /> : <Trash2 size={14} />}
+                      <span className="hidden sm:inline">حذف</span>
                     </button>
                   </div>
                 </div>
@@ -1324,9 +1770,10 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
 // ─────────────────────────────────────────────
 // ADDONS TAB
 // ─────────────────────────────────────────────
-const AddonsTab: React.FC<{ addons: Addon[]; onRefresh: () => void }> = ({ addons, onRefresh }) => {
+const AddonsTab: React.FC<{ addons: Addon[]; onRefresh: () => void; showToast?: (msg: string, type?: 'success' | 'error') => void }> = ({ addons, onRefresh, showToast }) => {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [form, setForm] = useState({ name: '', description: '', price: '', total_inventory: '1', icon: 'Zap', image_url: '' })
   const [saving, setSaving] = useState(false)
 
@@ -1370,6 +1817,29 @@ const AddonsTab: React.FC<{ addons: Addon[]; onRefresh: () => void }> = ({ addon
   const toggleActive = async (a: Addon) => {
     await supabase.from('addons').update({ is_active: !a.is_active }).eq('id', a.id)
     onRefresh()
+  }
+
+  const handleDelete = async (a: Addon) => {
+    if (!window.confirm(`هل أنت متأكد من رغبتك في حذف إضافة "${a.name}" نهائياً من النظام؟`)) return
+    setDeletingId(a.id)
+    try {
+      const { error } = await supabase.from('addons').delete().eq('id', a.id)
+      if (error) {
+        if (error.code === '23503' || error.message.includes('foreign key')) {
+          const msg = '⚠️ لا يمكن حذف هذه الإضافة لوجود حجوزات سابقة مرتبطة بها. يُرجى تعطيلها بدلاً من الحذف.'
+          showToast ? showToast(msg, 'error') : alert(msg)
+        } else {
+          showToast ? showToast('⚠️ تعذر الحذف: ' + error.message, 'error') : alert('تعذر الحذف: ' + error.message)
+        }
+      } else {
+        showToast ? showToast('تم حذف الإضافة بنجاح 🗑️') : alert('تم حذف الإضافة بنجاح')
+        onRefresh()
+      }
+    } catch (err: any) {
+      showToast ? showToast('⚠️ خطأ: ' + err.message, 'error') : alert('خطأ')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   return (
@@ -1456,10 +1926,18 @@ const AddonsTab: React.FC<{ addons: Addon[]; onRefresh: () => void }> = ({ addon
                 {a.description && <p className="text-[11px] text-gray-500 line-clamp-1 mt-0.5">{a.description}</p>}
               </div>
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => startEdit(a)} className="glass p-2 rounded-lg hover:bg-white/10" title="تعديل"><Edit3 size={14} /></button>
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => startEdit(a)} className="glass p-2 rounded-lg hover:bg-white/10 text-emerald-400" title="تعديل"><Edit3 size={14} /></button>
               <button onClick={() => toggleActive(a)} className="glass p-2 rounded-lg" title={a.is_active ? 'تعطيل' : 'تفعيل'}>
-                {a.is_active ? <XCircle size={14} className="text-red-400" /> : <CheckCircle2 size={14} className="text-emerald-400" />}
+                {a.is_active ? <XCircle size={14} className="text-amber-400" /> : <CheckCircle2 size={14} className="text-emerald-400" />}
+              </button>
+              <button
+                onClick={() => handleDelete(a)}
+                disabled={deletingId === a.id}
+                className="p-2 rounded-lg text-red-400 hover:text-red-300 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors"
+                title="حذف الإضافة"
+              >
+                {deletingId === a.id ? <Loader2 size={14} className="animate-spin text-red-400" /> : <Trash2 size={14} />}
               </button>
             </div>
           </div>
@@ -1628,6 +2106,25 @@ const WaterOrdersTab: React.FC<WaterOrdersTabProps> = ({ orders, sizes, onRefres
       onRefresh()
     } catch (err: any) {
       showToast('⚠️ خطأ في التحديث', 'error')
+    }
+  }
+
+  const handleDeleteSize = async (s: WaterTankerSize) => {
+    if (!window.confirm(`هل أنت متأكد من رغبتك في حذف حجم وايت "${s.name}" نهائياً من النظام؟`)) return
+    try {
+      const { error } = await supabase.from('water_tanker_sizes').delete().eq('id', s.id)
+      if (error) {
+        if (error.code === '23503' || error.message.includes('foreign key')) {
+          showToast('⚠️ لا يمكن حذف هذا الحجم لوجود طلبات سابقة مسجلة به. يمكنك استخدام زر التعطيل بدلاً من الحذف.', 'error')
+        } else {
+          showToast('⚠️ تعذر الحذف: ' + error.message, 'error')
+        }
+      } else {
+        showToast('تم حذف حجم الوايت بنجاح 🗑️')
+        onRefresh()
+      }
+    } catch (e: any) {
+      showToast('⚠️ خطأ في الحذف: ' + e.message, 'error')
     }
   }
 
@@ -2053,6 +2550,14 @@ ${o.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${o.google_maps_u
                         title={sz.is_active ? 'تعطيل الحجم' : 'تفعيل الحجم'}
                       >
                         {sz.is_active ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteSize(sz)}
+                        className="p-2 rounded-xl text-red-400 hover:text-red-300 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors"
+                        title="حذف حجم الوايت"
+                      >
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   </div>
@@ -3449,24 +3954,46 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
     setForm(prev => ({ ...prev, features: prev.features.filter((_, i) => i !== index) }))
   }
 
+  const ensureDefaultFacilitiesInDB = async () => {
+    try {
+      const { data } = await supabase.from('resort_facilities').select('id')
+      if (!data || data.length === 0) {
+        const rows = DEFAULT_FACILITIES.map((df, idx) => ({
+          title: df.title,
+          subtitle: df.subtitle || null,
+          badge_text: df.badge_text || null,
+          description: df.description,
+          image_url: df.image_url,
+          features: df.features,
+          privacy_note: df.privacy_note || 'مشمول بكامل الخصوصية',
+          cta_text: df.cta_text || 'احجز هذه الوحدة',
+          display_order: df.display_order ?? (idx + 1),
+          is_active: df.is_active ?? true,
+        }))
+        await supabase.from('resort_facilities').insert(rows)
+      }
+    } catch (e) {
+      // Ignore or log error
+    }
+  }
+
   const handleToggleActive = async (f: Facility) => {
     setTogglingId(f.id)
     try {
       if (f.id.startsWith('default-')) {
-        const payload = {
-          title: f.title,
-          subtitle: f.subtitle || null,
-          badge_text: f.badge_text || null,
-          description: f.description,
-          image_url: f.image_url,
-          features: f.features,
-          privacy_note: f.privacy_note || 'مشمول بكامل الخصوصية',
-          cta_text: f.cta_text || 'احجز هذه الوحدة',
-          display_order: f.display_order,
-          is_active: !f.is_active,
+        await ensureDefaultFacilitiesInDB()
+        const { data: found } = await supabase
+          .from('resort_facilities')
+          .select('id, is_active')
+          .eq('title', f.title)
+          .maybeSingle()
+        if (found?.id) {
+          const { error } = await supabase
+            .from('resort_facilities')
+            .update({ is_active: !f.is_active })
+            .eq('id', found.id)
+          if (error) throw error
         }
-        const { error } = await supabase.from('resort_facilities').insert([payload])
-        if (error) throw error
       } else {
         const { error } = await supabase
           .from('resort_facilities')
@@ -3474,27 +4001,38 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
           .eq('id', f.id)
         if (error) throw error
       }
-      showToast(f.is_active ? 'تم إخفاء المرفق من الموقع 👁️' : 'تم إظهار وتفعيل المرفق في الموقع ✅')
+      showToast(f.is_active ? 'تم إخفاء القسم من الموقع 👁️' : 'تم إظهار وتفعيل القسم في الموقع ✅')
       onRefresh()
     } catch (err: any) {
-      showToast('⚠️ تعذر تحديث حالة المرفق: ' + (err.message || 'خطأ غير متوقع'), 'error')
+      showToast('⚠️ تعذر تحديث حالة القسم: ' + (err.message || 'خطأ غير متوقع'), 'error')
     } finally {
       setTogglingId(null)
     }
   }
 
   const handleDelete = async (f: Facility) => {
-    if (!window.confirm(`هل أنت متأكد من رغبتك في حذف مرفق "${f.title}" نهائياً من الموقع؟`)) return
+    if (!window.confirm(`هل أنت متأكد من رغبتك في حذف قسم "${f.title}" نهائياً من الموقع؟`)) return
     setDeletingId(f.id)
     try {
-      if (!f.id.startsWith('default-')) {
+      if (f.id.startsWith('default-')) {
+        await ensureDefaultFacilitiesInDB()
+        const { data: found } = await supabase
+          .from('resort_facilities')
+          .select('id')
+          .eq('title', f.title)
+          .maybeSingle()
+        if (found?.id) {
+          const { error } = await supabase.from('resort_facilities').delete().eq('id', found.id)
+          if (error) throw error
+        }
+      } else {
         const { error } = await supabase.from('resort_facilities').delete().eq('id', f.id)
         if (error) throw error
       }
-      showToast('تم حذف المرفق بنجاح 🗑️')
+      showToast('تم حذف القسم بنجاح 🗑️')
       onRefresh()
     } catch (err: any) {
-      showToast('⚠️ تعذر حذف المرفق: ' + (err.message || 'خطأ غير متوقع'), 'error')
+      showToast('⚠️ تعذر حذف القسم: ' + (err.message || 'خطأ غير متوقع'), 'error')
     } finally {
       setDeletingId(null)
     }
@@ -3503,15 +4041,15 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.title.trim()) {
-      showToast('يرجى كتابة عنوان المرفق', 'error')
+      showToast('يرجى كتابة عنوان القسم', 'error')
       return
     }
     if (!form.description.trim()) {
-      showToast('يرجى كتابة الوصف التفصيلي للمرفق', 'error')
+      showToast('يرجى كتابة الوصف التفصيلي للقسم', 'error')
       return
     }
     if (!form.image_url.trim()) {
-      showToast('يرجى تحديد رابط صورة المرفق', 'error')
+      showToast('يرجى تحديد رابط صورة القسم', 'error')
       return
     }
 
@@ -3530,24 +4068,34 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
     }
 
     try {
-      if (editingFacility && !editingFacility.id.startsWith('default-')) {
+      if (editingFacility) {
+        let targetId = editingFacility.id
+        if (targetId.startsWith('default-')) {
+          await ensureDefaultFacilitiesInDB()
+          const { data: found } = await supabase
+            .from('resort_facilities')
+            .select('id')
+            .eq('title', editingFacility.title)
+            .maybeSingle()
+          if (found?.id) targetId = found.id
+        }
         const { error } = await supabase
           .from('resort_facilities')
           .update(payload)
-          .eq('id', editingFacility.id)
+          .eq('id', targetId)
         if (error) throw error
-        showToast('تم تحديث بيانات المرفق بنجاح ✅')
+        showToast('تم تحديث بيانات وصور القسم بنجاح ✅')
       } else {
         const { error } = await supabase
           .from('resort_facilities')
           .insert([payload])
         if (error) throw error
-        showToast('تم إضافة المرفق الجديد ونشره بنجاح ✅')
+        showToast('تم إضافة القسم الجديد ونشره بنجاح ✅')
       }
       setShowModal(false)
       onRefresh()
     } catch (err: any) {
-      showToast('⚠️ تعذر حفظ بيانات المرفق: ' + (err.message || 'خطأ غير متوقع'), 'error')
+      showToast('⚠️ تعذر حفظ بيانات القسم: ' + (err.message || 'خطأ غير متوقع'), 'error')
     } finally {
       setSaving(false)
     }
@@ -3564,10 +4112,10 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
             <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
               <Palmtree size={20} />
             </span>
-            <h2 className="text-xl font-bold text-white">إدارة مرافق الواحة والمنتجع (Bento CMS)</h2>
+            <h2 className="text-xl font-bold text-white">إدارة أقسام ومرافق المنتجع 🏡</h2>
           </div>
           <p className="text-xs sm:text-sm text-gray-400">
-            تحكم كامل في تعديل وإضافة وإخفاء وترتيب مرافق الواحة التي تظهر في شبكة Bento بالصفحة الرئيسية
+            تحكم كامل وسهل في تعديل وحذف وإضافة وإخفاء أقسام ومرافق المنتجع التي تظهر للزوار في الصفحة الرئيسية
           </p>
         </div>
 
@@ -3585,7 +4133,7 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
             className="btn-primary py-2.5 px-4 text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-900/30 whitespace-nowrap"
           >
             <Plus size={16} />
-            <span>إضافة مرفق جديد</span>
+            <span>إضافة قسم جديد</span>
           </button>
         </div>
       </div>
@@ -3993,6 +4541,8 @@ const AdminPage: React.FC = () => {
   const [selectedBookingForDetails, setSelectedBookingForDetails] = useState<Booking | null>(null)
   const [bookingToConfirm, setBookingToConfirm] = useState<Booking | null>(null)
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null)
+  const [bookingToEdit, setBookingToEdit] = useState<Booking | null>(null)
+  const [bookingToDelete, setBookingToDelete] = useState<Booking | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
 
   // Filtering states
@@ -4013,44 +4563,10 @@ const AdminPage: React.FC = () => {
     if (!authLoading && (!user || !isAdmin)) {
       navigate('/')
     }
-  }, [profile, user, authLoading, isAdmin])
-
-  // Show loading while checking auth
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 size={32} className="text-emerald-400 animate-spin" />
-      </div>
-    )
-  }
-
-  // Block access for non-admin
-  if (!user || !isAdmin) {
-    return (
-      <div className="min-h-screen flex items-center justify-center pt-16">
-        <div className="card glass-strong p-8 max-w-md w-full text-center border border-red-500/30">
-          <div className="w-16 h-16 rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-4">
-            <Shield size={32} />
-          </div>
-          <h2 className="text-xl font-bold text-white mb-2">⛔ غير مصرح بالدخول</h2>
-          <p className="text-sm text-gray-400 mb-6 leading-relaxed">
-            لوحة تحكم إدارة المنتجع متاحة فقط للمسؤول المعتمد.
-            <br />
-            يرجى تسجيل الدخول بحساب المسؤول.
-          </p>
-          <button
-            onClick={() => navigate('/')}
-            className="btn-primary py-2.5 px-6 mx-auto"
-          >
-            <Home size={16} />
-            العودة للرئيسية
-          </button>
-        </div>
-      </div>
-    )
-  }
+  }, [profile, user, authLoading, isAdmin, navigate])
 
   const fetchAll = useCallback(async () => {
+    if (!user || !isAdmin) return
     setLoading(true)
     const [{ data: b }, { data: s }, { data: p }, { data: a }, { data: wo }, { data: ws }, { data: fac }] = await Promise.all([
       supabase
@@ -4074,9 +4590,13 @@ const AdminPage: React.FC = () => {
     if (fac && fac.length > 0) setFacilities(fac as any)
     else setFacilities(DEFAULT_FACILITIES)
     setLoading(false)
-  }, [])
+  }, [user, isAdmin])
 
-  useEffect(() => { fetchAll() }, [fetchAll])
+  useEffect(() => {
+    if (user && isAdmin) {
+      fetchAll()
+    }
+  }, [fetchAll, user, isAdmin])
 
   // Execute confirmation
   const handleExecuteConfirm = async (booking: Booking) => {
@@ -4135,6 +4655,41 @@ const AdminPage: React.FC = () => {
     setBookingToCancel(null)
   }
 
+  // Execute delete booking
+  const handleExecuteDeleteBooking = async (booking: Booking) => {
+    setActionLoading(true)
+    try {
+      // 1. Delete dependent addons first to ensure foreign key safety
+      await supabase
+        .from('booking_addons')
+        .delete()
+        .eq('booking_id', booking.id)
+
+      // 2. Delete the booking
+      const { error } = await supabase
+        .from('bookings')
+        .delete()
+        .eq('id', booking.id)
+
+      if (error) {
+        showToast('⚠️ تعذر حذف الحجز: ' + error.message, 'error')
+      } else {
+        // Optimistic update
+        setBookings(prev => prev.filter(b => b.id !== booking.id))
+        showToast('تم حذف الحجز بنجاح وإتاحة التاريخ في التقويم 🗑️', 'success')
+        await fetchAll()
+      }
+    } catch (err: any) {
+      showToast('⚠️ حدث خطأ أثناء حذف الحجز: ' + (err?.message || ''), 'error')
+    } finally {
+      setActionLoading(false)
+      setBookingToDelete(null)
+      if (selectedBookingForDetails?.id === booking.id) {
+        setSelectedBookingForDetails(null)
+      }
+    }
+  }
+
   const handleSaveSettings = async (s: Settings) => {
     await supabase.from('resort_settings').update(s).eq('id', 1)
     setSettings(s)
@@ -4176,6 +4731,42 @@ const AdminPage: React.FC = () => {
     return waterOrders.filter(o => o.status === 'new').length
   }, [waterOrders])
 
+  // ─── CONDITIONAL RENDERS ONLY AFTER ALL HOOKS HAVE BEEN EXECUTED ───
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 size={32} className="text-emerald-400 animate-spin" />
+      </div>
+    )
+  }
+
+  // Block access for non-admin
+  if (!user || !isAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center pt-16">
+        <div className="card glass-strong p-8 max-w-md w-full text-center border border-red-500/30">
+          <div className="w-16 h-16 rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-4">
+            <Shield size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">⛔ غير مصرح بالدخول</h2>
+          <p className="text-sm text-gray-400 mb-6 leading-relaxed">
+            لوحة تحكم إدارة المنتجع متاحة فقط للمسؤول المعتمد.
+            <br />
+            يرجى تسجيل الدخول بحساب المسؤول.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="btn-primary py-2.5 px-6 mx-auto"
+          >
+            <Home size={16} />
+            العودة للرئيسية
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (loading && bookings.length === 0) return (
     <div className="min-h-screen flex items-center justify-center">
       <Loader2 size={32} className="text-emerald-400 animate-spin" />
@@ -4184,14 +4775,15 @@ const AdminPage: React.FC = () => {
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview', label: 'نظرة عامة', icon: <BarChart3 size={16} /> },
+    { id: 'facilities', label: 'أقسام ومرافق المنتجع 🏡', icon: <Sparkles size={16} className="text-amber-400" /> },
     { id: 'cms', label: 'واجهة الموقع والصور 🖼️', icon: <ImageIcon size={16} className="text-emerald-400" /> },
     { id: 'media', label: 'مكتبة الوسائط 📂', icon: <Palmtree size={16} className="text-teal-400" /> },
     { id: 'bookings', label: 'جميع الحجوزات', icon: <CalendarCheck size={16} /> },
     { id: 'pending', label: 'بانتظار الإجراء', icon: <Clock size={16} />, badge: allPending.length },
-    { id: 'properties', label: 'الوحدات', icon: <Home size={16} /> },
+    { id: 'properties', label: 'الوحدات والاستراحات', icon: <Home size={16} /> },
     { id: 'water', label: 'وايتات الماء 💧', icon: <Droplets size={16} className="text-teal-400" />, badge: newWaterOrdersCount },
     { id: 'ledger', label: 'سجل وحسابات الوايت 📊', icon: <BarChart3 size={16} className="text-amber-400" /> },
-    { id: 'addons', label: 'الإضافات', icon: <Zap size={16} /> },
+    { id: 'addons', label: 'الإضافات والخدمات', icon: <Zap size={16} /> },
     { id: 'settings', label: 'الإعدادات البنكية', icon: <Settings size={16} /> },
   ]
 
@@ -4371,6 +4963,8 @@ const AdminPage: React.FC = () => {
                     onConfirm={booking => setBookingToConfirm(booking)}
                     onCancel={booking => setBookingToCancel(booking)}
                     onOpenDetails={booking => setSelectedBookingForDetails(booking)}
+                    onEdit={booking => setBookingToEdit(booking)}
+                    onDelete={booking => setBookingToDelete(booking)}
                     loading={actionLoading}
                   />
                 ))}
@@ -4459,44 +5053,64 @@ const AdminPage: React.FC = () => {
                       </div>
 
                       {/* Action Buttons */}
-                      <div className="grid grid-cols-4 gap-2 pt-1 border-t border-white/5">
-                        <button
-                          onClick={() => setSelectedBookingForDetails(b)}
-                          className="flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-200 py-2.5 px-2 rounded-xl text-xs font-medium transition-colors"
-                        >
-                          👁️ تفاصيل
-                        </button>
-
-                        {isPending ? (
+                      <div className="space-y-2 pt-2 border-t border-white/5">
+                        <div className="grid grid-cols-4 gap-1.5">
                           <button
-                            onClick={() => setBookingToConfirm(b)}
-                            className="flex items-center justify-center gap-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 py-2.5 px-2 rounded-xl text-xs font-medium transition-colors"
+                            onClick={() => setSelectedBookingForDetails(b)}
+                            className="flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 px-1 rounded-xl text-xs font-medium transition-colors"
+                            title="تفاصيل الحجز"
                           >
-                            ✅ تأكيد
+                            👁️ تفاصيل
                           </button>
-                        ) : (
-                          <span />
-                        )}
 
-                        {isCancellable ? (
                           <button
-                            onClick={() => setBookingToCancel(b)}
-                            className="flex items-center justify-center gap-1 bg-red-500/10 text-red-400 border border-red-500/20 py-2.5 px-2 rounded-xl text-xs font-medium transition-colors"
+                            onClick={() => setBookingToEdit(b)}
+                            className="flex items-center justify-center gap-1 bg-blue-600/20 text-blue-400 border border-blue-500/30 py-2 px-1 rounded-xl text-xs font-medium transition-colors"
+                            title="تعديل الحجز"
                           >
-                            ❌ إلغاء
+                            ✏️ تعديل
                           </button>
-                        ) : (
-                          <span />
-                        )}
 
-                        <a
-                          href={generateWhatsAppLink(b.customer_phone, getBookingWhatsAppMsg(b))}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 py-2.5 px-2 rounded-xl text-xs font-medium transition-colors"
-                        >
-                          💬 واتساب
-                        </a>
+                          <button
+                            onClick={() => setBookingToDelete(b)}
+                            className="flex items-center justify-center gap-1 bg-red-600/20 text-red-400 border border-red-500/30 py-2 px-1 rounded-xl text-xs font-medium transition-colors"
+                            title="حذف الحجز نهائياً"
+                          >
+                            🗑️ حذف
+                          </button>
+
+                          <a
+                            href={generateWhatsAppLink(b.customer_phone, getBookingWhatsAppMsg(b))}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 py-2 px-1 rounded-xl text-xs font-medium transition-colors"
+                            title="مراسلة واتساب"
+                          >
+                            💬 واتساب
+                          </a>
+                        </div>
+
+                        {(isPending || isCancellable) && (
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {isPending ? (
+                              <button
+                                onClick={() => setBookingToConfirm(b)}
+                                className="flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-2 rounded-xl text-xs transition-colors shadow-sm"
+                              >
+                                ✅ تأكيد واعتماد
+                              </button>
+                            ) : <span />}
+
+                            {isCancellable ? (
+                              <button
+                                onClick={() => setBookingToCancel(b)}
+                                className="flex items-center justify-center gap-1 bg-red-500/10 text-red-400 border border-red-500/20 py-2 px-2 rounded-xl text-xs font-medium transition-colors"
+                              >
+                                ❌ إلغاء الحجز
+                              </button>
+                            ) : <span />}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -4566,6 +5180,14 @@ const AdminPage: React.FC = () => {
                                 <Info size={15} />
                               </button>
 
+                              <button
+                                onClick={() => setBookingToEdit(b)}
+                                className="glass p-2 rounded-xl text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
+                                title="تعديل بيانات الحجز"
+                              >
+                                <Edit3 size={15} />
+                              </button>
+
                               {isPending && (
                                 <button
                                   onClick={() => setBookingToConfirm(b)}
@@ -4587,6 +5209,14 @@ const AdminPage: React.FC = () => {
                                   <span className="hidden xl:inline">إلغاء</span>
                                 </button>
                               )}
+
+                              <button
+                                onClick={() => setBookingToDelete(b)}
+                                className="glass p-2 rounded-xl text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                                title="حذف الحجز نهائياً"
+                              >
+                                <Trash2 size={15} />
+                              </button>
 
                               <a
                                 href={generateWhatsAppLink(b.customer_phone, getBookingWhatsAppMsg(b))}
@@ -4630,6 +5260,14 @@ const AdminPage: React.FC = () => {
           />
         )}
 
+        {activeTab === 'facilities' && (
+          <FacilitiesAdminTab
+            facilities={facilities}
+            onRefresh={fetchAll}
+            showToast={showToast}
+          />
+        )}
+
         {activeTab === 'cms' && (
           <WebsiteCmsTab showToast={showToast} />
         )}
@@ -4639,11 +5277,11 @@ const AdminPage: React.FC = () => {
         )}
 
         {activeTab === 'properties' && (
-          <PropertiesTab properties={properties} onRefresh={fetchAll} />
+          <PropertiesTab properties={properties} onRefresh={fetchAll} showToast={showToast} />
         )}
 
         {activeTab === 'addons' && (
-          <AddonsTab addons={addons} onRefresh={fetchAll} />
+          <AddonsTab addons={addons} onRefresh={fetchAll} showToast={showToast} />
         )}
 
         {activeTab === 'settings' && settings && (
@@ -4666,7 +5304,28 @@ const AdminPage: React.FC = () => {
         onClose={() => setSelectedBookingForDetails(null)}
         onConfirm={b => setBookingToConfirm(b)}
         onCancel={b => setBookingToCancel(b)}
+        onEdit={b => setBookingToEdit(b)}
+        onDelete={b => setBookingToDelete(b)}
       />
+
+      {bookingToEdit && (
+        <EditBookingModal
+          booking={bookingToEdit}
+          properties={properties}
+          onClose={() => setBookingToEdit(null)}
+          onSuccess={fetchAll}
+          showToast={showToast}
+        />
+      )}
+
+      {bookingToDelete && (
+        <DeleteBookingConfirmModal
+          booking={bookingToDelete}
+          onClose={() => setBookingToDelete(null)}
+          onConfirm={handleExecuteDeleteBooking}
+          loading={actionLoading}
+        />
+      )}
 
       <ConfirmActionModal
         booking={bookingToConfirm}
