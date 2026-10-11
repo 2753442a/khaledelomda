@@ -20,6 +20,7 @@ export interface ResortSettings {
   stats_events: string
   stats_clients: string
   stats_days: string
+  show_hero_stats: boolean
   location_address: string
   water_contact_phone: string
   water_contact_whatsapp: string
@@ -43,6 +44,7 @@ export const DEFAULT_RESORT_SETTINGS: ResortSettings = {
   stats_events: '+200',
   stats_clients: '+1000',
   stats_days: '365',
+  show_hero_stats: true,
   location_address: 'المملكة العربية السعودية • موقع مميز وسهل الوصول',
   water_contact_phone: '0543034553',
   water_contact_whatsapp: '0547382222',
@@ -99,6 +101,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           stats_events: data.stats_events || DEFAULT_RESORT_SETTINGS.stats_events,
           stats_clients: data.stats_clients || DEFAULT_RESORT_SETTINGS.stats_clients,
           stats_days: data.stats_days || DEFAULT_RESORT_SETTINGS.stats_days,
+          show_hero_stats: data.show_hero_stats !== undefined ? Boolean(data.show_hero_stats) : true,
           location_address: data.location_address || DEFAULT_RESORT_SETTINGS.location_address,
           water_contact_phone: data.water_contact_phone || data.contact_phone || DEFAULT_RESORT_SETTINGS.water_contact_phone,
           water_contact_whatsapp: data.water_contact_whatsapp || data.contact_whatsapp || DEFAULT_RESORT_SETTINGS.water_contact_whatsapp,

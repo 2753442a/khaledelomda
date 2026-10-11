@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import {
-  Sparkles, Save, Eye, Phone, MessageCircle, Clock,
+  Sparkles, Save, Eye, EyeOff, Phone, MessageCircle, Clock,
   MapPin, Check, Loader2, Image as ImageIcon, Star, Users, Calendar
 } from 'lucide-react'
 import { ResortSettings, useSettings } from '../../contexts/SettingsContext'
@@ -222,15 +222,51 @@ export const WebsiteCmsTab: React.FC<WebsiteCmsTabProps> = ({ showToast }) => {
         </div>
 
         {/* Section 3: Key Stats Counters */}
-        <div className="card p-6 border border-white/10 shadow-xl space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-white/10">
-            <span className="p-2 rounded-xl bg-teal-500/15 text-teal-400">
-              <Star size={18} />
-            </span>
-            <div>
-              <h3 className="text-base font-bold text-white">إحصائيات الإنجاز والتميز (Hero Stats)</h3>
-              <p className="text-xs text-gray-400">البطاقات الرقمية الـ 3 التي تعزز ثقة العملاء في أسفل الهيرو</p>
+        <div className={`card p-6 border transition-all duration-300 shadow-xl space-y-4 ${
+          form.show_hero_stats ? 'border-white/10' : 'border-amber-500/20 bg-slate-900/40'
+        }`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <span className={`p-2 rounded-xl ${form.show_hero_stats ? 'bg-teal-500/15 text-teal-400' : 'bg-gray-500/15 text-gray-400'}`}>
+                <Star size={18} />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white">إحصائيات الإنجاز والتميز (Hero Stats)</h3>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                    form.show_hero_stats
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  }`}>
+                    {form.show_hero_stats ? 'ظاهر للزوار ✓' : 'مخفي حالياً ✕'}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400">البطاقات الرقمية الـ 3 التي تعزز ثقة العملاء في أسفل الهيرو</p>
+              </div>
             </div>
+
+            {/* Toggle show/hide button */}
+            <button
+              type="button"
+              onClick={() => handleChange('show_hero_stats', !form.show_hero_stats)}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                form.show_hero_stats
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
+                  : 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
+              }`}
+            >
+              {form.show_hero_stats ? (
+                <>
+                  <Eye size={15} />
+                  <span>القسم ظاهر (انقر للإخفاء)</span>
+                </>
+              ) : (
+                <>
+                  <EyeOff size={15} />
+                  <span>القسم مخفي (انقر للإظهار)</span>
+                </>
+              )}
+            </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

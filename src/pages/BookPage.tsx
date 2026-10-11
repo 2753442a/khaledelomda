@@ -12,7 +12,8 @@ import {
 import { compressReceiptImage, formatFileSize } from '../lib/imageCompression'
 import {
   Zap, Plus, Minus, Upload, Check, MessageCircle,
-  ChevronDown, ChevronUp, AlertTriangle, Loader2, X, Info, LogIn
+  ChevronDown, ChevronUp, AlertTriangle, Loader2, X, Info, LogIn,
+  Eye, Image as ImageIcon, ChevronLeft, ChevronRight, Camera
 } from 'lucide-react'
 import { format, addDays } from 'date-fns'
 
@@ -33,6 +34,8 @@ interface Property {
   weekend_price: number
   amenities: string[]
   max_guests: number
+  cover_image?: string | null
+  images?: string[]
 }
 
 interface Addon {
@@ -42,6 +45,7 @@ interface Addon {
   price: number
   total_inventory: number
   icon: string
+  image_url?: string | null
   is_active: boolean
 }
 
@@ -71,6 +75,9 @@ const BookPage: React.FC = () => {
   const [bookingId, setBookingId] = useState<string | null>(null)
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [galleryProperty, setGalleryProperty] = useState<Property | null>(null)
+  const [galleryIndex, setGalleryIndex] = useState(0)
+  const [previewAddon, setPreviewAddon] = useState<Addon | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -356,34 +363,109 @@ const BookPage: React.FC = () => {
             <div className="card p-5">
               <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                 <span className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 text-sm font-bold flex items-center justify-center">1</span>
-                اختر الوحدة
+                اختر الوحدة والاستراحة
               </h2>
-              <div className="space-y-3">
-                {properties.map(p => (
-                  <div
-                    key={p.id}
-                    onClick={() => { setSelectedProperty(p); setSelectedDate(null) }}
-                    className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                      selectedProperty?.id === p.id
-                        ? 'border-emerald-500/60 bg-emerald-500/10'
-                        : 'border-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <h3 className="font-bold text-white">{p.name}</h3>
-                      <div className="text-right">
-                        <span className="text-emerald-400 font-bold text-sm">{formatCurrency(p.weekday_price)}</span>
-                        <span className="text-gray-500 text-xs"> / أيام عادية</span>
+              <div className="space-y-4">
+                {properties.map(p => {
+                  const photo = p.cover_image || (p.images && p.images[0]) || ''
+                  const allImgs = Array.isArray(p.images) && p.images.length > 0 ? p.images : (photo ? [photo] : [])
+                  const isSelected = selectedProperty?.id === p.id
+
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => { setSelectedProperty(p); setSelectedDate(null) }}
+                      className={`rounded-2xl border cursor-pointer transition-all overflow-hidden ${
+                        isSelected
+                          ? 'border-emerald-500/80 bg-emerald-500/10 shadow-lg shadow-emerald-950/40 ring-1 ring-emerald-500/30'
+                          : 'border-white/10 hover:border-white/20 bg-slate-900/60'
+                      }`}
+                    >
+                      {photo && (
+                        <div className="relative h-48 sm:h-56 w-full bg-slate-950 overflow-hidden group">
+                          <img
+                            src={photo}
+                            alt={p.name}
+                            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=800&q=80'
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
+
+                          {/* Gallery View Button */}
+                          {allImgs.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setGalleryProperty(p)
+                                setGalleryIndex(0)
+                              }}
+                              className="absolute bottom-3 right-3 px-3 py-1.5 rounded-xl text-xs font-bold bg-black/80 hover:bg-black text-emerald-300 border border-emerald-500/40 backdrop-blur-md flex items-center gap-1.5 shadow-lg transition-transform hover:scale-105 active:scale-95"
+                            >
+                              <Camera size={14} />
+                              <span>معرض الصور ({allImgs.length} صور) 📸</span>
+                            </button>
+                          )}
+
+                          {isSelected && (
+                            <div className="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500 text-slate-950 shadow-md flex items-center gap-1">
+                              <Check size={13} />
+                              تم الاختيار
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="p-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-bold text-white text-base sm:text-lg">{p.name}</h3>
+                          <div className="text-right">
+                            <span className="text-emerald-400 font-bold text-base">{formatCurrency(p.weekday_price)}</span>
+                            <span className="text-gray-400 text-xs"> / أيام عادية</span>
+                          </div>
+                        </div>
+
+                        {p.description && <p className="text-gray-300 text-xs sm:text-sm leading-relaxed">{p.description}</p>}
+
+                        {/* Thumbnails preview strip */}
+                        {allImgs.length > 1 && (
+                          <div className="flex items-center gap-2 pt-1 overflow-x-auto no-scrollbar">
+                            {allImgs.map((img, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setGalleryProperty(p)
+                                  setGalleryIndex(i)
+                                }}
+                                className="w-12 h-10 rounded-lg overflow-hidden border border-white/10 hover:border-emerald-400/50 flex-shrink-0 transition-transform hover:scale-105"
+                              >
+                                <img src={img} alt="" className="w-full h-full object-cover" />
+                              </button>
+                            ))}
+                            <span className="text-[11px] text-emerald-400 font-semibold flex-shrink-0">
+                              + انقر لتكبير الصور
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5">
+                          <div className="flex flex-wrap gap-1.5">
+                            {p.amenities.slice(0, 5).map((a, i) => (
+                              <span key={i} className="text-xs glass px-2.5 py-0.5 rounded-full text-gray-300">{a}</span>
+                            ))}
+                          </div>
+                          <span className="text-xs text-amber-300/90 font-medium">
+                            عطل الأسبوع: {formatCurrency(p.weekend_price)}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    {p.description && <p className="text-gray-400 text-sm">{p.description}</p>}
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {p.amenities.slice(0, 5).map((a, i) => (
-                        <span key={i} className="text-xs glass px-2 py-0.5 rounded-full text-gray-300">{a}</span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
 
@@ -415,13 +497,37 @@ const BookPage: React.FC = () => {
                 </h2>
                 <div className="space-y-3">
                   {Object.values(addonSelections).map(({ addon, quantity, available }) => (
-                    <div key={addon.id} className="flex items-center justify-between p-3 rounded-xl bg-white/4 border border-white/8">
+                    <div key={addon.id} className="flex items-center justify-between p-3.5 rounded-2xl bg-white/4 border border-white/8 hover:border-white/15 transition-all">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-amber-400">
-                          {getIconComponent(addon.icon)}
-                        </div>
+                        {addon.image_url ? (
+                          <div
+                            onClick={() => setPreviewAddon(addon)}
+                            className="relative w-12 h-12 rounded-xl overflow-hidden bg-slate-950 border border-white/15 cursor-pointer group flex-shrink-0"
+                            title="انقر لمعاينة صورة الإضافة"
+                          >
+                            <img src={addon.image_url} alt={addon.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                            <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 flex items-center justify-center transition-colors">
+                              <Eye size={14} className="text-white drop-shadow opacity-80 group-hover:opacity-100" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-12 h-12 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-amber-400 flex-shrink-0">
+                            {getIconComponent(addon.icon)}
+                          </div>
+                        )}
                         <div>
-                          <p className="text-sm font-semibold text-white">{addon.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-bold text-white">{addon.name}</p>
+                            {addon.image_url && (
+                              <button
+                                type="button"
+                                onClick={() => setPreviewAddon(addon)}
+                                className="text-[11px] text-teal-300 hover:text-teal-200 underline flex items-center gap-0.5"
+                              >
+                                معاينة الصورة
+                              </button>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-400">
                             {formatCurrency(addon.price)} / قطعة
                             {available === 0 ? (
@@ -659,6 +765,147 @@ const BookPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Property Multi-Image Lightbox Modal */}
+      {galleryProperty && (() => {
+        const photos = Array.isArray(galleryProperty.images) && galleryProperty.images.length > 0
+          ? galleryProperty.images
+          : (galleryProperty.cover_image ? [galleryProperty.cover_image] : [])
+        const currentPhoto = photos[galleryIndex] || photos[0]
+
+        return (
+          <div
+            onClick={() => setGalleryProperty(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-4xl w-full rounded-3xl overflow-hidden border border-white/20 shadow-2xl bg-slate-950 flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-4 bg-slate-900/90 border-b border-white/10 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Camera size={18} className="text-emerald-400" />
+                    <span>{galleryProperty.name} — معرض الصور</span>
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    صورة {galleryIndex + 1} من {photos.length}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGalleryProperty(null)}
+                  className="glass p-2 rounded-xl text-gray-300 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Main Image Display with Navigation Arrows */}
+              <div className="relative h-[50vh] sm:h-[65vh] bg-black flex items-center justify-center overflow-hidden">
+                <img
+                  src={currentPhoto}
+                  alt={galleryProperty.name}
+                  className="max-w-full max-h-full object-contain select-none"
+                />
+
+                {photos.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setGalleryIndex(prev => (prev > 0 ? prev - 1 : photos.length - 1))}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full glass hover:bg-white/20 text-white flex items-center justify-center shadow-xl transition-transform hover:scale-110 active:scale-95"
+                      aria-label="الصورة السابقة"
+                    >
+                      <ChevronRight size={22} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGalleryIndex(prev => (prev < photos.length - 1 ? prev + 1 : 0))}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full glass hover:bg-white/20 text-white flex items-center justify-center shadow-xl transition-transform hover:scale-110 active:scale-95"
+                      aria-label="الصورة التالية"
+                    >
+                      <ChevronLeft size={22} />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Bottom Thumbnails Strip */}
+              {photos.length > 1 && (
+                <div className="p-3 bg-slate-900/90 border-t border-white/10 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                  {photos.map((pUrl, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setGalleryIndex(i)}
+                      className={`relative w-16 h-12 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${
+                        galleryIndex === i
+                          ? 'border-emerald-400 ring-2 ring-emerald-400/30 scale-105'
+                          : 'border-white/10 hover:border-white/30 opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={pUrl} alt="" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Addon Preview Lightbox Modal */}
+      {previewAddon && (
+        <div
+          onClick={() => setPreviewAddon(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-md w-full rounded-3xl overflow-hidden border border-white/20 shadow-2xl bg-slate-950 flex flex-col animate-scale-in"
+          >
+            <div className="relative h-64 w-full bg-slate-900 overflow-hidden">
+              <img
+                src={previewAddon.image_url || ''}
+                alt={previewAddon.name}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
+              <button
+                type="button"
+                onClick={() => setPreviewAddon(null)}
+                className="absolute top-3 left-3 glass p-2 rounded-xl text-white hover:bg-black/60 shadow-lg"
+              >
+                <X size={18} />
+              </button>
+              <div className="absolute bottom-3 right-3 px-3 py-1 rounded-full text-xs font-bold bg-amber-500 text-slate-950 shadow-md">
+                معاينة الإضافة
+              </div>
+            </div>
+
+            <div className="p-5 space-y-3 text-right">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-black text-white">{previewAddon.name}</h3>
+                <span className="text-emerald-400 font-black text-lg">{formatCurrency(previewAddon.price)}</span>
+              </div>
+              {previewAddon.description && (
+                <p className="text-sm text-gray-300 leading-relaxed">{previewAddon.description}</p>
+              )}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPreviewAddon(null)}
+                  className="btn-primary w-full py-2.5 text-sm font-bold"
+                >
+                  إغلاق المعاينة
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AuthModal open={authModalOpen} onClose={() => setAuthModalOpen(false)} />
     </div>

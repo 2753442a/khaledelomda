@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth, isAdminPhone } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import {
   formatArabicDate, formatCurrency, formatShortDate, formatTime,
@@ -21,6 +21,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval,
   getDay, addMonths, subMonths, parseISO, isSameDay, subDays, startOfWeek } from 'date-fns'
 import { ar } from 'date-fns/locale'
 import ImageUploader from '../components/ImageUploader'
+import { uploadImageToSupabase } from '../lib/imageUpload'
 import WebsiteCmsTab from '../components/admin/WebsiteCmsTab'
 import MediaLibraryTab from '../components/admin/MediaLibraryTab'
 import ManualBookingModal from '../components/admin/ManualBookingModal'
@@ -109,6 +110,7 @@ interface Addon {
   price: number
   total_inventory: number
   icon: string
+  image_url?: string | null
   is_active: boolean
 }
 
@@ -949,13 +951,77 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
     max_guests: '50',
     amenities: '',
     cover_image: '',
+    images: [] as string[],
   })
+  const [uploadingMulti, setUploadingMulti] = useState(false)
+  const [newImageUrl, setNewImageUrl] = useState('')
   const [saving, setSaving] = useState(false)
+  const multiFileInputRef = React.useRef<HTMLInputElement>(null)
 
-  const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }))
+  const set = (key: string, val: any) => setForm(f => ({ ...f, [key]: val }))
+
+  const handleAddMultipleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    setUploadingMulti(true)
+    try {
+      const uploadedUrls: string[] = []
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        const res = await uploadImageToSupabase(file, 'resort-media', 'properties')
+        if (res?.url) uploadedUrls.push(res.url)
+      }
+      setForm(f => {
+        const combined = [...f.images, ...uploadedUrls]
+        return {
+          ...f,
+          images: combined,
+          cover_image: f.cover_image || combined[0] || '',
+        }
+      })
+    } catch (err: any) {
+      alert('تعذر رفع بعض الصور: ' + (err.message || ''))
+    } finally {
+      setUploadingMulti(false)
+      if (multiFileInputRef.current) multiFileInputRef.current.value = ''
+    }
+  }
+
+  const handleAddUrl = () => {
+    const trimmed = newImageUrl.trim()
+    if (!trimmed) return
+    setForm(f => {
+      const combined = [...f.images, trimmed]
+      return {
+        ...f,
+        images: combined,
+        cover_image: f.cover_image || trimmed,
+      }
+    })
+    setNewImageUrl('')
+  }
+
+  const handleRemoveImage = (index: number) => {
+    setForm(f => {
+      const removed = f.images[index]
+      const nextImages = f.images.filter((_, i) => i !== index)
+      const nextCover = f.cover_image === removed ? (nextImages[0] || '') : f.cover_image
+      return {
+        ...f,
+        images: nextImages,
+        cover_image: nextCover,
+      }
+    })
+  }
+
+  const handleSetCover = (url: string) => {
+    setForm(f => ({ ...f, cover_image: url }))
+  }
 
   const handleSave = async () => {
     setSaving(true)
+    const validImages = form.images.filter(Boolean)
+    const cover = form.cover_image || validImages[0] || null
     const data = {
       name: form.name,
       description: form.description,
@@ -963,8 +1029,8 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
       weekend_price: Number(form.weekend_price),
       max_guests: Number(form.max_guests),
       amenities: form.amenities.split('،').map(a => a.trim()).filter(Boolean),
-      cover_image: form.cover_image || null,
-      images: form.cover_image ? [form.cover_image] : [],
+      cover_image: cover,
+      images: validImages.length > 0 ? validImages : (cover ? [cover] : []),
     }
 
     if (editingId) {
@@ -975,13 +1041,16 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
 
     setShowForm(false)
     setEditingId(null)
-    setForm({ name: '', description: '', weekday_price: '', weekend_price: '', max_guests: '50', amenities: '', cover_image: '' })
+    setForm({ name: '', description: '', weekday_price: '', weekend_price: '', max_guests: '50', amenities: '', cover_image: '', images: [] })
     onRefresh()
     setSaving(false)
   }
 
   const startEdit = (p: Property) => {
     setEditingId(p.id)
+    const existingImgs = Array.isArray(p.images) && p.images.length > 0
+      ? [...p.images]
+      : (p.cover_image ? [p.cover_image] : [])
     setForm({
       name: p.name,
       description: p.description ?? '',
@@ -989,7 +1058,8 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
       weekend_price: String(p.weekend_price),
       max_guests: String(p.max_guests),
       amenities: p.amenities.join('، '),
-      cover_image: p.cover_image || (p.images && p.images[0]) || '',
+      cover_image: p.cover_image || existingImgs[0] || '',
+      images: existingImgs,
     })
     setShowForm(true)
   }
@@ -1004,9 +1074,9 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-bold text-white text-lg">الوحدات والاستراحات والأسعار</h3>
-          <p className="text-xs text-gray-400">إدارة تفاصيل الوحدات، صورها، أسعار الأيام العادية والعطل، وإتاحتها للحجز</p>
+          <p className="text-xs text-gray-400">إدارة تفاصيل الوحدات، إضافة صور متعددة لكل وحدة، أسعار الأيام العادية والعطل، وإتاحتها للحجز</p>
         </div>
-        <button onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', description: '', weekday_price: '', weekend_price: '', max_guests: '50', amenities: '', cover_image: '' }) }}
+        <button onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', description: '', weekday_price: '', weekend_price: '', max_guests: '50', amenities: '', cover_image: '', images: [] }) }}
           className="btn-primary text-sm py-2 px-3">
           <Plus size={15} />
           إضافة وحدة جديدة
@@ -1022,15 +1092,123 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
               <input type="text" value={form.name} onChange={e => set('name', e.target.value)} className="input-field min-h-[48px]" placeholder="مثال: الاستراحة الكبيرة أو المنتجع الكامل" />
             </div>
 
-            {/* Image Uploader from Device */}
-            <div className="sm:col-span-2">
-              <ImageUploader
-                value={form.cover_image}
-                onChange={url => set('cover_image', url)}
-                label="صورة الوحدة الرئيسية (اختر من جهازك أو من مكتبة المنتجع)"
-                helperText="اختر صورة للوحدة من جهازك ليتم عرضها في بطاقة الحجز للعملاء"
-                folder="properties"
-              />
+            {/* Multi-Image Gallery Manager */}
+            <div className="sm:col-span-2 p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="block text-sm font-bold text-white">معرض صور الوحدة (صور متعددة تعرض للعميل أثناء الحجز 📸)</label>
+                  <p className="text-xs text-gray-400">يمكنك رفع أكثر من صورة من جهازك للوحدة (المسبح، المجالس، الجلسات الخارجية). الصورة المحددة بنجمة ⭐ هي الغلاف الرئيسي.</p>
+                </div>
+                <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 whitespace-nowrap self-start">
+                  إجمالي الصور: {form.images.length}
+                </span>
+              </div>
+
+              {/* Upload Buttons */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <input
+                  ref={multiFileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handleAddMultipleFiles}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => multiFileInputRef.current?.click()}
+                  disabled={uploadingMulti}
+                  className="btn-primary py-2 px-3.5 text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-950/40"
+                >
+                  {uploadingMulti ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>جاري رفع الصور من الجهاز...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={14} />
+                      <span>رفع صور من جهازك (اختيار متعدد 📁)</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Add by URL */}
+                <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
+                  <input
+                    type="url"
+                    value={newImageUrl}
+                    onChange={e => setNewImageUrl(e.target.value)}
+                    placeholder="أو الصق رابط صورة مباشر..."
+                    className="input-field text-xs py-2 min-h-[38px] flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddUrl}
+                    disabled={!newImageUrl.trim()}
+                    className="glass py-2 px-3 rounded-xl text-xs font-bold text-emerald-300 hover:text-white disabled:opacity-40"
+                  >
+                    إضافة
+                  </button>
+                </div>
+              </div>
+
+              {/* Thumbnails Grid */}
+              {form.images.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 pt-2">
+                  {form.images.map((imgUrl, index) => {
+                    const isCover = form.cover_image === imgUrl || (!form.cover_image && index === 0)
+                    return (
+                      <div
+                        key={index}
+                        className={`relative rounded-xl overflow-hidden border transition-all group bg-slate-950 h-28 flex flex-col justify-between ${
+                          isCover ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-lg' : 'border-white/10 hover:border-white/30'
+                        }`}
+                      >
+                        <img
+                          src={imgUrl}
+                          alt={`صورة ${index + 1}`}
+                          className="w-full h-full object-cover select-none"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=400&q=80'
+                          }}
+                        />
+
+                        {/* Top Badges & Actions */}
+                        <div className="absolute top-1 inset-x-1 flex items-center justify-between">
+                          {isCover ? (
+                            <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-1.5 py-0.5 rounded-md shadow">
+                              ⭐ الغلاف
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleSetCover(imgUrl)}
+                              className="bg-black/70 hover:bg-black text-[10px] text-amber-300 font-bold px-1.5 py-0.5 rounded-md backdrop-blur-sm opacity-90 hover:opacity-100 transition-opacity"
+                              title="تعيين كصورة الغلاف الرئيسية"
+                            >
+                              تعيين غلاف
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(index)}
+                            className="bg-red-500/80 hover:bg-red-600 text-white p-1 rounded-md shadow backdrop-blur-sm transition-colors"
+                            title="حذف هذه الصورة من الوحدة"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500 py-3 text-center border border-dashed border-white/10 rounded-xl">
+                  لم يتم إضافة صور لهذه الوحدة بعد. اضغط على الزر أعلاه لرفع صور من جهازك.
+                </p>
+              )}
             </div>
 
             <div className="sm:col-span-2">
@@ -1067,20 +1245,38 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {properties.map(p => {
           const photo = p.cover_image || (p.images && p.images[0]) || ''
+          const allImgs = Array.isArray(p.images) && p.images.length > 0 ? p.images : (photo ? [photo] : [])
           return (
             <div key={p.id} className={`card p-4 flex flex-col justify-between ${!p.is_active ? 'opacity-60' : ''}`}>
               <div className="space-y-3">
                 {photo && (
-                  <div className="relative h-40 rounded-2xl overflow-hidden bg-slate-950 border border-white/10">
+                  <div className="relative h-44 rounded-2xl overflow-hidden bg-slate-950 border border-white/10 group">
                     <img
                       src={photo}
                       alt={p.name}
-                      className="w-full h-full object-cover object-center"
+                      className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=800&q=80'
                       }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
+                    {allImgs.length > 1 && (
+                      <span className="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-black/80 backdrop-blur-md text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                        <ImageIcon size={12} />
+                        معرض صور: {allImgs.length} صور
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Sub-thumbnails preview */}
+                {allImgs.length > 1 && (
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+                    {allImgs.map((thumb, idx) => (
+                      <div key={idx} className="w-12 h-10 rounded-lg overflow-hidden border border-white/10 flex-shrink-0 bg-slate-900">
+                        <img src={thumb} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ))}
                   </div>
                 )}
 
@@ -1131,7 +1327,7 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
 const AddonsTab: React.FC<{ addons: Addon[]; onRefresh: () => void }> = ({ addons, onRefresh }) => {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', description: '', price: '', total_inventory: '1', icon: 'Zap' })
+  const [form, setForm] = useState({ name: '', description: '', price: '', total_inventory: '1', icon: 'Zap', image_url: '' })
   const [saving, setSaving] = useState(false)
 
   const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }))
@@ -1144,6 +1340,7 @@ const AddonsTab: React.FC<{ addons: Addon[]; onRefresh: () => void }> = ({ addon
       price: Number(form.price),
       total_inventory: Number(form.total_inventory),
       icon: form.icon,
+      image_url: form.image_url || null,
     }
     if (editingId) {
       await supabase.from('addons').update(data).eq('id', editingId)
@@ -1152,14 +1349,21 @@ const AddonsTab: React.FC<{ addons: Addon[]; onRefresh: () => void }> = ({ addon
     }
     setShowForm(false)
     setEditingId(null)
-    setForm({ name: '', description: '', price: '', total_inventory: '1', icon: 'Zap' })
+    setForm({ name: '', description: '', price: '', total_inventory: '1', icon: 'Zap', image_url: '' })
     onRefresh()
     setSaving(false)
   }
 
   const startEdit = (a: Addon) => {
     setEditingId(a.id)
-    setForm({ name: a.name, description: a.description ?? '', price: String(a.price), total_inventory: String(a.total_inventory), icon: a.icon })
+    setForm({
+      name: a.name,
+      description: a.description ?? '',
+      price: String(a.price),
+      total_inventory: String(a.total_inventory),
+      icon: a.icon,
+      image_url: a.image_url ?? '',
+    })
     setShowForm(true)
   }
 
@@ -1171,21 +1375,42 @@ const AddonsTab: React.FC<{ addons: Addon[]; onRefresh: () => void }> = ({ addon
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-bold text-white">الإضافات المتاحة</h3>
-        <button onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', description: '', price: '', total_inventory: '1', icon: 'Zap' }) }}
+        <div>
+          <h3 className="font-bold text-white text-lg">الإضافات والخدمات المتاحة</h3>
+          <p className="text-xs text-gray-400">إدارة الإضافات (سكوتر كهربائي، مجالس إضافية، إلخ) مع صور للمعاينة وأسعار ومخزون</p>
+        </div>
+        <button onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', description: '', price: '', total_inventory: '1', icon: 'Zap', image_url: '' }) }}
           className="btn-primary text-sm py-2 px-3">
           <Plus size={15} />
-          إضافة
+          إضافة خدمة جديدة
         </button>
       </div>
 
       {showForm && (
         <div className="card p-5 border border-emerald-500/25 animate-fade-in-up">
+          <h4 className="font-bold text-white mb-4">{editingId ? 'تعديل الإضافة والصورة' : 'إضافة خدمة أو معدات جديدة'}</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">الاسم *</label>
-              <input type="text" value={form.name} onChange={e => set('name', e.target.value)} className="input-field min-h-[48px]" placeholder="سكوتر كهربائي" />
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">اسم الإضافة *</label>
+              <input type="text" value={form.name} onChange={e => set('name', e.target.value)} className="input-field min-h-[48px]" placeholder="مثال: سكوتر كهربائي، مجلس إضافي، سماعات دي جي" />
             </div>
+
+            {/* Addon Image Uploader */}
+            <div className="sm:col-span-2">
+              <ImageUploader
+                value={form.image_url}
+                onChange={url => set('image_url', url)}
+                label="صورة الإضافة للمعاينة (تظهر للعميل أثناء الحجز 🛴)"
+                helperText="اختر صورة من جهازك ليتمكن العميل من معاينة شكل الإضافة قبل حجزها"
+                folder="addons"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">الوصف</label>
+              <input type="text" value={form.description} onChange={e => set('description', e.target.value)} className="input-field min-h-[48px]" placeholder="وصف موجز للمنتج أو الخدمة..." />
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1.5">السعر (ر.س)</label>
               <input type="number" value={form.price} onChange={e => set('price', e.target.value)} className="input-field min-h-[48px]" />
@@ -1194,8 +1419,8 @@ const AddonsTab: React.FC<{ addons: Addon[]; onRefresh: () => void }> = ({ addon
               <label className="block text-sm font-medium text-gray-300 mb-1.5">المخزون الكلي</label>
               <input type="number" value={form.total_inventory} onChange={e => set('total_inventory', e.target.value)} className="input-field min-h-[48px]" />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">الأيقونة</label>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">الأيقونة (الافتراضي: Zap)</label>
               <input type="text" value={form.icon} onChange={e => set('icon', e.target.value)} className="input-field min-h-[48px]" placeholder="Zap" />
             </div>
           </div>
@@ -1203,7 +1428,7 @@ const AddonsTab: React.FC<{ addons: Addon[]; onRefresh: () => void }> = ({ addon
             <button onClick={() => setShowForm(false)} className="btn-ghost min-h-[48px] text-sm py-2 px-5">إلغاء</button>
             <button onClick={handleSave} disabled={saving || !form.name} className="btn-primary min-h-[48px] text-sm py-2 px-5">
               {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-              {editingId ? 'حفظ' : 'إضافة'}
+              {editingId ? 'حفظ التعديلات' : 'إضافة الخدمة'}
             </button>
           </div>
         </div>
@@ -1211,15 +1436,30 @@ const AddonsTab: React.FC<{ addons: Addon[]; onRefresh: () => void }> = ({ addon
 
       <div className="space-y-3">
         {addons.map(a => (
-          <div key={a.id} className={`card p-4 flex items-center justify-between ${!a.is_active ? 'opacity-60' : ''}`}>
-            <div>
-              <p className="font-semibold text-white">{a.name}</p>
-              <p className="text-sm text-gray-400">{formatCurrency(a.price)} / قطعة • مخزون: {a.total_inventory}</p>
+          <div key={a.id} className={`card p-4 flex items-center justify-between gap-4 ${!a.is_active ? 'opacity-60' : ''}`}>
+            <div className="flex items-center gap-3.5">
+              {a.image_url ? (
+                <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-950 border border-white/10 flex-shrink-0">
+                  <img src={a.image_url} alt={a.name} className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-amber-400 flex-shrink-0">
+                  <Zap size={20} />
+                </div>
+              )}
+              <div>
+                <p className="font-bold text-white text-base">{a.name}</p>
+                <p className="text-xs text-gray-400">
+                  {formatCurrency(a.price)} / قطعة • المخزون: {a.total_inventory}
+                  {a.image_url && <span className="text-emerald-400 mr-2">✓ صورة معاينة متوفرة</span>}
+                </p>
+                {a.description && <p className="text-[11px] text-gray-500 line-clamp-1 mt-0.5">{a.description}</p>}
+              </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => startEdit(a)} className="glass p-2 rounded-lg hover:bg-white/10"><Edit3 size={13} /></button>
-              <button onClick={() => toggleActive(a)} className="glass p-2 rounded-lg">
-                {a.is_active ? <XCircle size={13} className="text-red-400" /> : <CheckCircle2 size={13} className="text-emerald-400" />}
+              <button onClick={() => startEdit(a)} className="glass p-2 rounded-lg hover:bg-white/10" title="تعديل"><Edit3 size={14} /></button>
+              <button onClick={() => toggleActive(a)} className="glass p-2 rounded-lg" title={a.is_active ? 'تعطيل' : 'تفعيل'}>
+                {a.is_active ? <XCircle size={14} className="text-red-400" /> : <CheckCircle2 size={14} className="text-emerald-400" />}
               </button>
             </div>
           </div>
@@ -3731,8 +3971,12 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
 type Tab = 'overview' | 'cms' | 'media' | 'facilities' | 'bookings' | 'pending' | 'properties' | 'addons' | 'water' | 'ledger' | 'settings'
 
 const AdminPage: React.FC = () => {
-  const { profile } = useAuth()
+  const { profile, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+
+  // ─── ACCESS CONTROL ───
+  // Only allow admin with phone 0556854162
+  const isAdmin = profile?.role === 'admin' && isAdminPhone(profile?.phone)
 
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [showManualBookingModal, setShowManualBookingModal] = useState(false)
@@ -3764,11 +4008,47 @@ const AdminPage: React.FC = () => {
     setTimeout(() => setToast(null), 3500)
   }
 
+  // Redirect non-admin users
   useEffect(() => {
-    if (profile && profile.role !== 'admin') {
+    if (!authLoading && (!user || !isAdmin)) {
       navigate('/')
     }
-  }, [profile])
+  }, [profile, user, authLoading, isAdmin])
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 size={32} className="text-emerald-400 animate-spin" />
+      </div>
+    )
+  }
+
+  // Block access for non-admin
+  if (!user || !isAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center pt-16">
+        <div className="card glass-strong p-8 max-w-md w-full text-center border border-red-500/30">
+          <div className="w-16 h-16 rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-4">
+            <Shield size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">⛔ غير مصرح بالدخول</h2>
+          <p className="text-sm text-gray-400 mb-6 leading-relaxed">
+            لوحة تحكم إدارة المنتجع متاحة فقط للمسؤول المعتمد.
+            <br />
+            يرجى تسجيل الدخول بحساب المسؤول.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="btn-primary py-2.5 px-6 mx-auto"
+          >
+            <Home size={16} />
+            العودة للرئيسية
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -3906,7 +4186,6 @@ const AdminPage: React.FC = () => {
     { id: 'overview', label: 'نظرة عامة', icon: <BarChart3 size={16} /> },
     { id: 'cms', label: 'واجهة الموقع والصور 🖼️', icon: <ImageIcon size={16} className="text-emerald-400" /> },
     { id: 'media', label: 'مكتبة الوسائط 📂', icon: <Palmtree size={16} className="text-teal-400" /> },
-    { id: 'facilities', label: 'إدارة المرافق 🏡', icon: <Sparkles size={16} className="text-amber-400" /> },
     { id: 'bookings', label: 'جميع الحجوزات', icon: <CalendarCheck size={16} /> },
     { id: 'pending', label: 'بانتظار الإجراء', icon: <Clock size={16} />, badge: allPending.length },
     { id: 'properties', label: 'الوحدات', icon: <Home size={16} /> },
@@ -4357,14 +4636,6 @@ const AdminPage: React.FC = () => {
 
         {activeTab === 'media' && (
           <MediaLibraryTab facilities={facilities} showToast={showToast} />
-        )}
-
-        {activeTab === 'facilities' && (
-          <FacilitiesAdminTab
-            facilities={facilities}
-            onRefresh={fetchAll}
-            showToast={showToast}
-          />
         )}
 
         {activeTab === 'properties' && (

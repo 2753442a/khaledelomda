@@ -164,22 +164,24 @@ export const Hero: React.FC = () => {
         </div>
 
         {/* Refined Frosted Emerald Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4 w-full max-w-3xl mt-10 sm:mt-12 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-          {stats.map((s, i) => (
-            <div
-              key={i}
-              className="bg-emerald-950/40 border border-emerald-500/20 backdrop-blur-md hover:border-emerald-400/40 transition-all duration-300 hover:-translate-y-1 shadow-lg shadow-emerald-950/50 p-4 rounded-2xl flex items-center justify-between text-right"
-            >
-              <div className="w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center">
-                {s.icon}
+        {settings.show_hero_stats !== false && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4 w-full max-w-3xl mt-10 sm:mt-12 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+            {stats.map((s, i) => (
+              <div
+                key={i}
+                className="bg-emerald-950/40 border border-emerald-500/20 backdrop-blur-md hover:border-emerald-400/40 transition-all duration-300 hover:-translate-y-1 shadow-lg shadow-emerald-950/50 p-4 rounded-2xl flex items-center justify-between text-right"
+              >
+                <div className="w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center">
+                  {s.icon}
+                </div>
+                <div>
+                  <p className="text-2xl sm:text-3xl font-black text-white tracking-tight">{s.value}</p>
+                  <p className="text-xs sm:text-sm text-emerald-300/80 font-medium">{s.label}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl sm:text-3xl font-black text-white tracking-tight">{s.value}</p>
-                <p className="text-xs sm:text-sm text-emerald-300/80 font-medium">{s.label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Organic Water Wave Divider transitioning into Facilities ── */}

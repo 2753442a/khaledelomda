@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import {
   Upload, Image as ImageIcon, Copy, Check, Eye, X,
-  Sparkles, ExternalLink, RefreshCw, Loader2, Folder
+  Sparkles, ExternalLink, RefreshCw, Loader2, Folder, Trash2, AlertTriangle
 } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
 import { PRESET_RESORT_IMAGES, uploadImageToSupabase, formatBytes } from '../../lib/imageUpload'
 import { useSettings } from '../../contexts/SettingsContext'
 import { Facility } from '../Facilities'
@@ -22,6 +23,15 @@ interface MediaItem {
 
 export const MediaLibraryTab: React.FC<MediaLibraryTabProps> = ({ facilities, showToast }) => {
   const { settings, updateSettings } = useSettings()
+  const DELETED_MEDIA_KEY = 'khaledelomda_deleted_media_ids'
+  const [deletedIds, setDeletedIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('khaledelomda_deleted_media_ids')
+      return stored ? JSON.parse(stored) : []
+    } catch {
+      return []
+    }
+  })
   const [uploadedItems, setUploadedItems] = useState<MediaItem[]>([])
   const [filterSource, setFilterSource] = useState<string>('all')
   const [zoomUrl, setZoomUrl] = useState<string | null>(null)
@@ -73,8 +83,9 @@ export const MediaLibraryTab: React.FC<MediaLibraryTabProps> = ({ facilities, sh
       }
     })
 
-    return list
-  }, [settings.hero_image_url, facilities, uploadedItems])
+    // Filter out deleted items
+    return list.filter(item => !deletedIds.includes(item.id) && !deletedIds.includes(item.url))
+  }, [settings.hero_image_url, facilities, uploadedItems, deletedIds])
 
   const filteredMedia = React.useMemo(() => {
     if (filterSource === 'all') return allMedia
@@ -122,6 +133,37 @@ export const MediaLibraryTab: React.FC<MediaLibraryTabProps> = ({ facilities, sh
       showToast('تم اعتماد هذه الصورة كخلفية رئيسية لواجهة الموقع (Hero) فوراً! 🌟')
     } else {
       showToast('تعذر تحديث صورة الهيرو', 'error')
+    }
+  }
+
+  const handleDeleteImage = async (item: MediaItem) => {
+    if (!window.confirm(`هل أنت متأكد من حذف صورة "${item.title}" من مكتبة الوسائط؟`)) {
+      return
+    }
+
+    try {
+      // 1. If stored in Supabase storage, attempt delete
+      if (item.url.includes('resort-media')) {
+        const match = item.url.match(/resort-media\/(.+)$/)
+        if (match && match[1]) {
+          const path = decodeURIComponent(match[1].split('?')[0])
+          await supabase.storage.from('resort-media').remove([path])
+        }
+      }
+
+      // 2. Persist deleted IDs
+      const nextDeleted = [...deletedIds, item.id, item.url]
+      setDeletedIds(nextDeleted)
+      try {
+        localStorage.setItem(DELETED_MEDIA_KEY, JSON.stringify(nextDeleted))
+      } catch (_) {}
+
+      // 3. Remove from uploadedItems state if it was there
+      setUploadedItems(prev => prev.filter(u => u.id !== item.id && u.url !== item.url))
+
+      showToast('تم حذف الصورة من مكتبة الوسائط بنجاح 🗑️')
+    } catch (err: any) {
+      showToast('⚠️ تعذر إتمام الحذف: ' + (err.message || ''), 'error')
     }
   }
 
@@ -260,7 +302,7 @@ export const MediaLibraryTab: React.FC<MediaLibraryTabProps> = ({ facilities, sh
                     ) : (
                       <>
                         <Copy size={12} />
-                        <span>نسخ الرابط</span>
+                        <span>نسخ</span>
                       </>
                     )}
                   </button>
@@ -276,7 +318,16 @@ export const MediaLibraryTab: React.FC<MediaLibraryTabProps> = ({ facilities, sh
                     }`}
                     title="تعيين كصورة الواجهة الرئيسية"
                   >
-                    {isHero ? 'مستخدمة' : 'تعيين كهيرو'}
+                    {isHero ? 'الهيرو' : 'تعيين كهيرو'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteImage(item)}
+                    className="p-1.5 rounded-lg text-xs font-semibold glass text-red-400 hover:text-red-300 hover:bg-red-500/20 border border-red-500/20 flex items-center justify-center transition-colors"
+                    title="حذف هذه الصورة من المكتبة 🗑️"
+                  >
+                    <Trash2 size={13} />
                   </button>
                 </div>
               </div>

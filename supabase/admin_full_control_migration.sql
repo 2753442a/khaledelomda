@@ -14,6 +14,7 @@ alter table public.resort_settings
   add column if not exists stats_events text default '+200',
   add column if not exists stats_clients text default '+1000',
   add column if not exists stats_days text default '365',
+  add column if not exists show_hero_stats boolean default true,
   add column if not exists location_address text default 'المملكة العربية السعودية • موقع مميز وسهل الوصول',
   add column if not exists water_contact_phone text default '0543034553',
   add column if not exists water_contact_whatsapp text default '0547382222';
@@ -47,6 +48,15 @@ alter table public.properties
 update public.properties
 set cover_image = 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80'
 where cover_image is null;
+
+-- 4. Ensure addons table supports image_url for customer preview
+alter table public.addons
+  add column if not exists image_url text;
+
+-- Provide default preview image for scooter if null
+update public.addons
+set image_url = 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=600&q=80'
+where name like '%سكوتر%' and (image_url is null or image_url = '');
 
 -- Confirm success
 select 'Migration for Admin Full Control completed successfully.' as status;
