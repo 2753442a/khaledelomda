@@ -1,22 +1,18 @@
 import React, { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarCheck, MessageCircle, Phone, Star, Users, Calendar, Sparkles, Waves } from 'lucide-react'
+import { CalendarCheck, MessageCircle, Phone, Star, Users, Calendar } from 'lucide-react'
 import { generateWhatsAppLink } from '../lib/utils'
-
-interface StatItem {
-  icon: React.ReactNode
-  value: string
-  label: string
-}
-
-const STATS: StatItem[] = [
-  { icon: <Star size={22} className="text-amber-300" />, value: '+200', label: 'مناسبة ناجحة' },
-  { icon: <Users size={22} className="text-emerald-300" />, value: '+1000', label: 'عميل سعيد' },
-  { icon: <Calendar size={22} className="text-teal-300" />, value: '365', label: 'يوم في السنة' },
-]
+import { useSettings } from '../contexts/SettingsContext'
 
 export const Hero: React.FC = () => {
+  const { settings } = useSettings()
   const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  const stats = [
+    { icon: <Star size={22} className="text-amber-300" />, value: settings.stats_events || '+200', label: 'مناسبة ناجحة' },
+    { icon: <Users size={22} className="text-emerald-300" />, value: settings.stats_clients || '+1000', label: 'عميل سعيد' },
+    { icon: <Calendar size={22} className="text-teal-300" />, value: settings.stats_days || '365', label: 'يوم في السنة' },
+  ]
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -78,11 +74,11 @@ export const Hero: React.FC = () => {
 
   return (
     <section className="relative min-h-[92vh] sm:min-h-screen flex flex-col justify-between overflow-hidden bg-slate-950 text-white">
-      {/* ── Base Layer: High-Resolution Resort Pool & Palm Landscape ── */}
+      {/* ── Base Layer: Resort Background Image Chosen by Admin ── */}
       <div className="absolute inset-0 z-0 overflow-hidden">
         <img
-          src="https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=2000&q=80"
-          alt="منتجع وبستان خالد العمدة - مسبح فيروزي وبستان نخيل فاخر"
+          src={settings.hero_image_url || 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=2000&q=80'}
+          alt={`${settings.resort_name} - واجهة المنتجع`}
           className="w-full h-full object-cover object-center select-none scale-105 animate-pulse-glow"
           style={{ animationDuration: '10s' }}
           loading="eager"
@@ -108,8 +104,7 @@ export const Hero: React.FC = () => {
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-4 pt-28 sm:pt-36 pb-12 max-w-5xl mx-auto w-full">
         {/* Floating Badge */}
         <div className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 rounded-full mb-6 border border-emerald-500/40 bg-emerald-950/60 backdrop-blur-md shadow-lg shadow-emerald-950/50 text-emerald-300 text-xs sm:text-sm font-semibold animate-fade-in-up">
-          <span className="text-base">🌴💧</span>
-          <span>واحة الاسترخاء والمناسبات في قلب الطبيعة</span>
+          <span>{settings.hero_badge || '🌴💧 واحة الاسترخاء والمناسبات في قلب الطبيعة'}</span>
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-1" />
         </div>
 
@@ -119,7 +114,7 @@ export const Hero: React.FC = () => {
             مرحباً بكم في
           </span>
           <span className="bg-gradient-to-r from-emerald-300 via-teal-200 to-amber-200 bg-clip-text text-transparent drop-shadow-md">
-            منتجع وبستان خالد العمدة
+            {settings.hero_title || 'منتجع وبستان خالد العمدة'}
           </span>
           <span className="block text-sm sm:text-lg text-amber-300/90 font-semibold mt-2.5 tracking-wide">
             للاستثمار • إيجار يومي ومناسبات فاخرة
@@ -128,7 +123,7 @@ export const Hero: React.FC = () => {
 
         {/* Subtitle Description */}
         <p className="text-gray-200 text-sm sm:text-lg max-w-2xl mx-auto mb-9 leading-relaxed font-normal animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-          انغمس في تجربة استثنائية تجمع بين <span className="text-emerald-300 font-semibold">بستان النخيل والمسطحات الخضراء</span>، و<span className="text-teal-300 font-semibold">المسبح الفيروزي والألعاب المائية</span>، ومجالس الضيافة الملكية في خصوصية تامة تلبي كافة تطلعاتكم.
+          {settings.hero_subtitle || 'انغمس في تجربة استثنائية تجمع بين بستان النخيل والمسطحات الخضراء، والمسبح الفيروزي والألعاب المائية، ومجالس الضيافة الملكية في خصوصية تامة تلبي كافة تطلعاتكم.'}
         </p>
 
         {/* CTA Buttons */}
@@ -149,7 +144,7 @@ export const Hero: React.FC = () => {
 
           {/* Luxury Amber Gold WhatsApp Button */}
           <a
-            href={generateWhatsAppLink('0547382222', 'السلام عليكم، أود الاستفسار عن حجز منتجع وبستان خالد العمدة')}
+            href={generateWhatsAppLink(settings.contact_whatsapp || '0547382222', `السلام عليكم، أود الاستفسار عن حجز ${settings.resort_name}`)}
             target="_blank"
             rel="noopener noreferrer"
             className="px-6 sm:px-7 py-3.5 sm:py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-bold text-sm sm:text-base shadow-xl shadow-amber-900/30 transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center gap-2 min-w-[150px]"
@@ -160,17 +155,17 @@ export const Hero: React.FC = () => {
 
           {/* Direct Phone Call Button */}
           <a
-            href="tel:0543034553"
+            href={`tel:${settings.contact_phone || '0543034553'}`}
             className="px-5 sm:px-6 py-3.5 sm:py-4 rounded-2xl glass hover:bg-white/10 text-white font-medium text-sm sm:text-base border border-white/15 transition-all duration-300 hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
           >
             <Phone size={17} className="text-emerald-400" />
-            <span dir="ltr">0543034553</span>
+            <span dir="ltr">{settings.contact_phone || '0543034553'}</span>
           </a>
         </div>
 
         {/* Refined Frosted Emerald Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4 w-full max-w-3xl mt-10 sm:mt-12 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-          {STATS.map((s, i) => (
+          {stats.map((s, i) => (
             <div
               key={i}
               className="bg-emerald-950/40 border border-emerald-500/20 backdrop-blur-md hover:border-emerald-400/40 transition-all duration-300 hover:-translate-y-1 shadow-lg shadow-emerald-950/50 p-4 rounded-2xl flex items-center justify-between text-right"

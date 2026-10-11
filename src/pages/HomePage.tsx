@@ -5,7 +5,11 @@ import { Hero } from '../components/Hero'
 import { Facilities } from '../components/Facilities'
 import { generateWhatsAppLink } from '../lib/utils'
 
+import { useSettings } from '../contexts/SettingsContext'
+
 const ContactSection: React.FC = () => {
+  const { settings } = useSettings()
+
   return (
     <section className="py-20 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
       <div className="relative rounded-3xl overflow-hidden p-8 sm:p-12 text-center border border-emerald-500/30 bg-gradient-to-br from-emerald-950/60 via-slate-950 to-slate-950 backdrop-blur-xl shadow-2xl">
@@ -24,7 +28,7 @@ const ContactSection: React.FC = () => {
           </h2>
 
           <p className="text-gray-300 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
-            نسعد بخدمتكم وتوفير كافة الترتيبات لحفلاتكم ومناسباتكم الخاصة في منتجع وبستان خالد العمدة. تواصلوا معنا مباشرة وسنكون بخدمتكم في كل خطوة.
+            نسعد بخدمتكم وتوفير كافة الترتيبات لحفلاتكم ومناسباتكم الخاصة في {settings.resort_name}. تواصلوا معنا مباشرة وسنكون بخدمتكم في كل خطوة.
           </p>
 
           {/* Action Buttons */}
@@ -38,21 +42,21 @@ const ContactSection: React.FC = () => {
             </Link>
 
             <a
-              href={generateWhatsAppLink('0547382222', 'السلام عليكم، أود الاستفسار عن حجز منتجع وبستان خالد العمدة')}
+              href={generateWhatsAppLink(settings.contact_whatsapp, `السلام عليكم، أود الاستفسار عن حجز ${settings.resort_name}`)}
               target="_blank"
               rel="noopener noreferrer"
               className="px-7 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-bold text-sm sm:text-base shadow-xl shadow-amber-900/30 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
             >
               <MessageCircle size={18} />
-              <span>مراسلة واتساب: 0547382222</span>
+              <span>مراسلة واتساب: {settings.contact_whatsapp}</span>
             </a>
 
             <a
-              href="tel:0543034553"
+              href={`tel:${settings.contact_phone}`}
               className="px-6 py-3.5 rounded-2xl glass hover:bg-white/10 text-white font-medium text-sm sm:text-base border border-white/15 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
             >
               <Phone size={17} className="text-emerald-400" />
-              <span dir="ltr">0543034553</span>
+              <span dir="ltr">{settings.contact_phone}</span>
             </a>
           </div>
 
@@ -60,11 +64,11 @@ const ContactSection: React.FC = () => {
           <div className="pt-6 flex flex-wrap items-center justify-center gap-6 text-xs sm:text-sm text-gray-400 border-t border-white/10 mt-6">
             <div className="flex items-center gap-1.5 text-gray-300">
               <MapPin size={15} className="text-emerald-400" />
-              <span>المملكة العربية السعودية • موقع مميز وسهل الوصول</span>
+              <span>{settings.location_address || 'المملكة العربية السعودية • موقع مميز وسهل الوصول'}</span>
             </div>
             <div className="flex items-center gap-1.5 text-gray-300">
               <Clock size={15} className="text-teal-400" />
-              <span>الوصول: 03:30 م • المغادرة: 11:30 ص</span>
+              <span>الوصول: {settings.default_check_in_time} • المغادرة: {settings.default_check_out_time}</span>
             </div>
             <div className="flex items-center gap-1.5 text-gray-300">
               <ShieldCheck size={15} className="text-amber-400" />
@@ -78,6 +82,8 @@ const ContactSection: React.FC = () => {
 }
 
 const WaterServiceBanner: React.FC = () => {
+  const { settings } = useSettings()
+
   return (
     <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
       <div className="relative rounded-3xl overflow-hidden p-8 sm:p-12 border border-teal-500/40 bg-gradient-to-r from-teal-950 via-slate-950 to-emerald-950 shadow-2xl">
@@ -122,7 +128,7 @@ const WaterServiceBanner: React.FC = () => {
             </Link>
 
             <a
-              href={generateWhatsAppLink('0547382222', 'السلام عليكم، أود طلب وايت ماء حلو')}
+              href={generateWhatsAppLink(settings.water_contact_whatsapp || settings.contact_whatsapp, 'السلام عليكم، أود طلب وايت ماء حلو')}
               target="_blank"
               rel="noopener noreferrer"
               className="w-full sm:w-auto px-6 py-4 rounded-2xl glass hover:bg-white/10 text-white font-bold text-base border border-white/15 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
@@ -138,6 +144,8 @@ const WaterServiceBanner: React.FC = () => {
 }
 
 const HomePage: React.FC = () => {
+  const { settings } = useSettings()
+
   return (
     <main className="min-h-screen bg-[#0d1117] text-white selection:bg-emerald-500 selection:text-white">
       <Hero />
@@ -159,7 +167,7 @@ const HomePage: React.FC = () => {
           <Link to="/admin" className="hover:text-emerald-400 transition-colors">لوحة الإدارة</Link>
         </div>
         <p className="text-gray-500">
-          © {new Date().getFullYear()} منتجع وبستان خالد العمدة للاستثمار — واحة الفخامة والاستجمام الطبيعي
+          © {new Date().getFullYear()} {settings.resort_name} — واحة الفخامة والاستجمام الطبيعي
         </p>
       </footer>
     </main>

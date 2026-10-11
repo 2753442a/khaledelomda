@@ -20,6 +20,10 @@ import { Facility, DEFAULT_FACILITIES } from '../components/Facilities'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval,
   getDay, addMonths, subMonths, parseISO, isSameDay, subDays, startOfWeek } from 'date-fns'
 import { ar } from 'date-fns/locale'
+import ImageUploader from '../components/ImageUploader'
+import WebsiteCmsTab from '../components/admin/WebsiteCmsTab'
+import MediaLibraryTab from '../components/admin/MediaLibraryTab'
+import ManualBookingModal from '../components/admin/ManualBookingModal'
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -94,6 +98,8 @@ interface Property {
   amenities: string[]
   max_guests: number
   is_active: boolean
+  cover_image?: string | null
+  images?: string[]
 }
 
 interface Addon {
@@ -935,7 +941,15 @@ const SettingsTab: React.FC<{ settings: Settings; onSave: (s: Settings) => Promi
 const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }> = ({ properties, onRefresh }) => {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', description: '', weekday_price: '', weekend_price: '', max_guests: '50', amenities: '' })
+  const [form, setForm] = useState({
+    name: '',
+    description: '',
+    weekday_price: '',
+    weekend_price: '',
+    max_guests: '50',
+    amenities: '',
+    cover_image: '',
+  })
   const [saving, setSaving] = useState(false)
 
   const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }))
@@ -949,6 +963,8 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
       weekend_price: Number(form.weekend_price),
       max_guests: Number(form.max_guests),
       amenities: form.amenities.split('،').map(a => a.trim()).filter(Boolean),
+      cover_image: form.cover_image || null,
+      images: form.cover_image ? [form.cover_image] : [],
     }
 
     if (editingId) {
@@ -959,7 +975,7 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
 
     setShowForm(false)
     setEditingId(null)
-    setForm({ name: '', description: '', weekday_price: '', weekend_price: '', max_guests: '50', amenities: '' })
+    setForm({ name: '', description: '', weekday_price: '', weekend_price: '', max_guests: '50', amenities: '', cover_image: '' })
     onRefresh()
     setSaving(false)
   }
@@ -973,6 +989,7 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
       weekend_price: String(p.weekend_price),
       max_guests: String(p.max_guests),
       amenities: p.amenities.join('، '),
+      cover_image: p.cover_image || (p.images && p.images[0]) || '',
     })
     setShowForm(true)
   }
@@ -985,25 +1002,40 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-bold text-white">الوحدات والاستراحات</h3>
-        <button onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', description: '', weekday_price: '', weekend_price: '', max_guests: '50', amenities: '' }) }}
+        <div>
+          <h3 className="font-bold text-white text-lg">الوحدات والاستراحات والأسعار</h3>
+          <p className="text-xs text-gray-400">إدارة تفاصيل الوحدات، صورها، أسعار الأيام العادية والعطل، وإتاحتها للحجز</p>
+        </div>
+        <button onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: '', description: '', weekday_price: '', weekend_price: '', max_guests: '50', amenities: '', cover_image: '' }) }}
           className="btn-primary text-sm py-2 px-3">
           <Plus size={15} />
-          إضافة وحدة
+          إضافة وحدة جديدة
         </button>
       </div>
 
       {showForm && (
         <div className="card p-5 border border-emerald-500/25 animate-fade-in-up">
-          <h4 className="font-bold text-white mb-4">{editingId ? 'تعديل الوحدة' : 'إضافة وحدة جديدة'}</h4>
+          <h4 className="font-bold text-white mb-4">{editingId ? 'تعديل بيانات وصور الوحدة' : 'إضافة وحدة واستراحة جديدة'}</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-300 mb-1.5">اسم الوحدة *</label>
-              <input type="text" value={form.name} onChange={e => set('name', e.target.value)} className="input-field min-h-[48px]" placeholder="مثال: الاستراحة الكبيرة" />
+              <input type="text" value={form.name} onChange={e => set('name', e.target.value)} className="input-field min-h-[48px]" placeholder="مثال: الاستراحة الكبيرة أو المنتجع الكامل" />
             </div>
+
+            {/* Image Uploader from Device */}
+            <div className="sm:col-span-2">
+              <ImageUploader
+                value={form.cover_image}
+                onChange={url => set('cover_image', url)}
+                label="صورة الوحدة الرئيسية (اختر من جهازك أو من مكتبة المنتجع)"
+                helperText="اختر صورة للوحدة من جهازك ليتم عرضها في بطاقة الحجز للعملاء"
+                folder="properties"
+              />
+            </div>
+
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-300 mb-1.5">الوصف</label>
-              <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={2} className="input-field min-h-[72px] resize-none" />
+              <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={2} className="input-field min-h-[72px] resize-none" placeholder="وصف تفصيلي لمزايا وتجهيزات هذه الوحدة..." />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1.5">سعر الأيام العادية (ر.س)</label>
@@ -1026,41 +1058,68 @@ const PropertiesTab: React.FC<{ properties: Property[]; onRefresh: () => void }>
             <button onClick={() => setShowForm(false)} className="btn-ghost min-h-[48px] text-sm py-2 px-5">إلغاء</button>
             <button onClick={handleSave} disabled={saving || !form.name} className="btn-primary min-h-[48px] text-sm py-2 px-5">
               {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-              {editingId ? 'حفظ التعديلات' : 'إضافة'}
+              {editingId ? 'حفظ التعديلات' : 'إضافة الوحدة'}
             </button>
           </div>
         </div>
       )}
 
-      <div className="space-y-3">
-        {properties.map(p => (
-          <div key={p.id} className={`card p-4 ${!p.is_active ? 'opacity-60' : ''}`}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <h4 className="font-bold text-white">{p.name}</h4>
-                {!p.is_active && <span className="text-xs badge-cancelled px-2 py-0.5 rounded-full">معطّل</span>}
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => startEdit(p)} className="glass p-2 rounded-lg hover:bg-white/10">
-                  <Edit3 size={13} />
-                </button>
-                <button onClick={() => toggleActive(p)} className={`glass p-2 rounded-lg ${p.is_active ? 'hover:bg-red-500/10' : 'hover:bg-emerald-500/10'}`}>
-                  {p.is_active ? <XCircle size={13} className="text-red-400" /> : <CheckCircle2 size={13} className="text-emerald-400" />}
-                </button>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {properties.map(p => {
+          const photo = p.cover_image || (p.images && p.images[0]) || ''
+          return (
+            <div key={p.id} className={`card p-4 flex flex-col justify-between ${!p.is_active ? 'opacity-60' : ''}`}>
+              <div className="space-y-3">
+                {photo && (
+                  <div className="relative h-40 rounded-2xl overflow-hidden bg-slate-950 border border-white/10">
+                    <img
+                      src={photo}
+                      alt={p.name}
+                      className="w-full h-full object-cover object-center"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=800&q=80'
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-white text-base">{p.name}</h4>
+                    {!p.is_active && <span className="text-xs badge-cancelled px-2 py-0.5 rounded-full">معطّل</span>}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => startEdit(p)} className="glass p-2 rounded-lg hover:bg-white/10" title="تعديل">
+                      <Edit3 size={14} />
+                    </button>
+                    <button onClick={() => toggleActive(p)} className={`glass p-2 rounded-lg ${p.is_active ? 'hover:bg-red-500/10' : 'hover:bg-emerald-500/10'}`} title={p.is_active ? 'تعطيل' : 'تفعيل'}>
+                      {p.is_active ? <XCircle size={14} className="text-red-400" /> : <CheckCircle2 size={14} className="text-emerald-400" />}
+                    </button>
+                  </div>
+                </div>
+
+                {p.description && (
+                  <p className="text-xs text-gray-300 line-clamp-2 leading-relaxed">
+                    {p.description}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 pt-1 border-t border-white/5">
+                  <span>أيام عادية: <span className="text-white font-bold">{formatCurrency(p.weekday_price)}</span></span>
+                  <span>عطل: <span className="text-white font-bold">{formatCurrency(p.weekend_price)}</span></span>
+                  <span>ضيوف: <span className="text-white font-bold">{p.max_guests}</span></span>
+                </div>
+
+                {p.amenities.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {p.amenities.map((a, i) => <span key={i} className="text-[11px] glass px-2 py-0.5 rounded-full text-gray-300">{a}</span>)}
+                  </div>
+                )}
               </div>
             </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-400">
-              <span>أيام عادية: <span className="text-white font-medium">{formatCurrency(p.weekday_price)}</span></span>
-              <span>عطل: <span className="text-white font-medium">{formatCurrency(p.weekend_price)}</span></span>
-              <span>ضيوف: <span className="text-white font-medium">{p.max_guests}</span></span>
-            </div>
-            {p.amenities.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {p.amenities.map((a, i) => <span key={i} className="text-xs glass px-2 py-0.5 rounded-full text-gray-300">{a}</span>)}
-              </div>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -1914,11 +1973,13 @@ const WaterLedgerTab: React.FC<WaterLedgerTabProps> = ({
     category: ExpenseCategory
     amount: string
     notes: string
+    receipt_image_url?: string
   }>({
     expense_date: todayStr,
     category: 'ديزل',
     amount: '',
     notes: '',
+    receipt_image_url: '',
   })
 
   // Add Manual Trip Modal
@@ -2099,6 +2160,7 @@ const WaterLedgerTab: React.FC<WaterLedgerTabProps> = ({
       category: expenseForm.category,
       amount: numAmount,
       notes: expenseForm.notes.trim() || null,
+      receipt_image_url: expenseForm.receipt_image_url?.trim() || null,
       created_at: new Date().toISOString(),
     }
 
@@ -2110,6 +2172,7 @@ const WaterLedgerTab: React.FC<WaterLedgerTabProps> = ({
       category: 'ديزل',
       amount: '',
       notes: '',
+      receipt_image_url: '',
     })
 
     try {
@@ -2120,6 +2183,7 @@ const WaterLedgerTab: React.FC<WaterLedgerTabProps> = ({
           category: newRecord.category,
           amount: newRecord.amount,
           notes: newRecord.notes,
+          receipt_image_url: newRecord.receipt_image_url,
         }])
         .select()
 
@@ -2928,6 +2992,17 @@ create policy "Admin manage manual trips" on public.water_manual_trips for all u
                 />
               </div>
 
+              <div>
+                <ImageUploader
+                  value={expenseForm.receipt_image_url || ''}
+                  onChange={url => setExpenseForm(f => ({ ...f, receipt_image_url: url }))}
+                  label="صورة فاتورة أو إيصال المصروف (اختياري - من الجهاز)"
+                  helperText="ارفع صورة فاتورة المحطة أو سند الصرف للتوثيق المالي"
+                  aspectRatio="square"
+                  folder="expenses"
+                />
+              </div>
+
               <div className="flex gap-2.5 pt-2">
                 <button
                   type="button"
@@ -3515,39 +3590,14 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
                 />
               </div>
 
-              {/* Image URL & Live Preview */}
-              <div>
-                <label className="text-xs text-gray-300 mb-1 block font-medium">رابط صورة المرفق (Image URL) *</label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    required
-                    value={form.image_url}
-                    onChange={(e) => setForm({ ...form, image_url: e.target.value })}
-                    className="input-field text-xs sm:text-sm flex-1 font-mono"
-                    placeholder="https://images.unsplash.com/..."
-                    dir="ltr"
-                  />
-                </div>
-
-                {/* Live Preview Container */}
-                {form.image_url && (
-                  <div className="mt-2 relative h-36 w-full rounded-2xl overflow-hidden border border-white/10 bg-black/40">
-                    <img
-                      src={form.image_url}
-                      alt="معاينة المرفق"
-                      className="w-full h-full object-cover object-center"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80'
-                      }}
-                    />
-                    <div className="absolute bottom-2 right-2 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md text-[10px] text-white flex items-center gap-1">
-                      <ImageIcon size={12} className="text-emerald-400" />
-                      <span>معاينة الصورة المباشرة</span>
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* Image Uploader Component from Device or Presets */}
+              <ImageUploader
+                value={form.image_url}
+                onChange={(url) => setForm({ ...form, image_url: url })}
+                label="صورة المرفق (اختر من جهازك أو من مكتبة المنتجع) *"
+                helperText="يمكنك اختيار صورة من جهازك مباشرة، أو اختيار صورة من مكتبة المنتجع، أو لصق رابط مباشر"
+                folder="facilities"
+              />
 
               {/* Dynamic Feature Tags */}
               <div>
@@ -3678,13 +3728,14 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
 // ─────────────────────────────────────────────
 // MAIN ADMIN PAGE
 // ─────────────────────────────────────────────
-type Tab = 'overview' | 'pending' | 'bookings' | 'water' | 'ledger' | 'facilities' | 'properties' | 'addons' | 'settings'
+type Tab = 'overview' | 'cms' | 'media' | 'facilities' | 'bookings' | 'pending' | 'properties' | 'addons' | 'water' | 'ledger' | 'settings'
 
 const AdminPage: React.FC = () => {
   const { profile } = useAuth()
   const navigate = useNavigate()
 
   const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [showManualBookingModal, setShowManualBookingModal] = useState(false)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [waterOrders, setWaterOrders] = useState<WaterOrder[]>([])
   const [waterSizes, setWaterSizes] = useState<WaterTankerSize[]>(DEFAULT_WATER_SIZES)
@@ -3853,14 +3904,16 @@ const AdminPage: React.FC = () => {
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview', label: 'نظرة عامة', icon: <BarChart3 size={16} /> },
-    { id: 'pending', label: 'بانتظار الإجراء', icon: <Clock size={16} />, badge: allPending.length },
+    { id: 'cms', label: 'واجهة الموقع والصور 🖼️', icon: <ImageIcon size={16} className="text-emerald-400" /> },
+    { id: 'media', label: 'مكتبة الوسائط 📂', icon: <Palmtree size={16} className="text-teal-400" /> },
+    { id: 'facilities', label: 'إدارة المرافق 🏡', icon: <Sparkles size={16} className="text-amber-400" /> },
     { id: 'bookings', label: 'جميع الحجوزات', icon: <CalendarCheck size={16} /> },
+    { id: 'pending', label: 'بانتظار الإجراء', icon: <Clock size={16} />, badge: allPending.length },
+    { id: 'properties', label: 'الوحدات', icon: <Home size={16} /> },
     { id: 'water', label: 'وايتات الماء 💧', icon: <Droplets size={16} className="text-teal-400" />, badge: newWaterOrdersCount },
     { id: 'ledger', label: 'سجل وحسابات الوايت 📊', icon: <BarChart3 size={16} className="text-amber-400" /> },
-    { id: 'facilities', label: 'إدارة المرافق 🏡', icon: <Palmtree size={16} className="text-emerald-400" /> },
-    { id: 'properties', label: 'الوحدات', icon: <Home size={16} /> },
     { id: 'addons', label: 'الإضافات', icon: <Zap size={16} /> },
-    { id: 'settings', label: 'الإعدادات', icon: <Settings size={16} /> },
+    { id: 'settings', label: 'الإعدادات البنكية', icon: <Settings size={16} /> },
   ]
 
   return (
@@ -3888,10 +3941,22 @@ const AdminPage: React.FC = () => {
             <span className="text-sm text-gray-400 hidden sm:inline">مرحباً بك ({profile?.phone})</span>
           </div>
 
-          <button onClick={fetchAll} className="glass py-1.5 px-3 rounded-xl hover:bg-white/10 text-xs text-gray-300 flex items-center gap-1.5">
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            <span>تحديث البيانات</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowManualBookingModal(true)}
+              className="btn-primary py-1.5 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-900/30"
+              title="تسجيل حجز جديد لعميل هاتف أو مكتب"
+            >
+              <Plus size={14} />
+              <span className="hidden sm:inline">تسجيل حجز يدوي</span>
+              <span className="sm:hidden">حجز يدوي</span>
+            </button>
+
+            <button onClick={fetchAll} className="glass py-1.5 px-3 rounded-xl hover:bg-white/10 text-xs text-gray-300 flex items-center gap-1.5">
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              <span>تحديث</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -4286,6 +4351,14 @@ const AdminPage: React.FC = () => {
           />
         )}
 
+        {activeTab === 'cms' && (
+          <WebsiteCmsTab showToast={showToast} />
+        )}
+
+        {activeTab === 'media' && (
+          <MediaLibraryTab facilities={facilities} showToast={showToast} />
+        )}
+
         {activeTab === 'facilities' && (
           <FacilitiesAdminTab
             facilities={facilities}
@@ -4308,6 +4381,15 @@ const AdminPage: React.FC = () => {
       </div>
 
       {/* MODALS */}
+      {showManualBookingModal && (
+        <ManualBookingModal
+          properties={properties}
+          onClose={() => setShowManualBookingModal(false)}
+          onSuccess={fetchAll}
+          showToast={showToast}
+        />
+      )}
+
       <BookingDetailsModal
         booking={selectedBookingForDetails}
         onClose={() => setSelectedBookingForDetails(null)}
