@@ -214,6 +214,47 @@ create table if not exists public.booking_addons (
   unit_price numeric not null
 );
 
+-- دالة حذف صور الإيصالات تلقائياً بعد مرور 48 ساعة على الحجز لحماية الخصوصية
+create or replace function public.purge_old_receipts()
+returns void as $$
+declare
+  r record;
+begin
+  for r in
+    select id, payment_receipt_url
+    from public.bookings
+    where payment_receipt_url is not null
+      and payment_receipt_url not like 'archived_%'
+      and check_in <= (now() - interval '48 hours')
+  loop
+    delete from storage.objects
+    where bucket_id = 'receipts'
+      and name = r.payment_receipt_url;
+
+    update public.bookings
+    set payment_receipt_url = 'archived_purged_after_48h'
+    where id = r.id;
+  end loop;
+end;
+$$ language plpgsql security definer;
+
+-- دالة إلغاء الحجوزات المعلقة تلقائياً بعد ساعتين إذا لم يتم رفع الإيصال
+create or replace function public.expire_pending_bookings()
+returns void as $$
+begin
+  update public.bookings
+  set status = 'expired'
+  where status = 'pending_receipt'
+    and created_at <= (now() - interval '2 hours');
+end;
+$$ language plpgsql security definer;
+
+-- فهارس تحسين سرعة الاستعلامات والأداء
+create index if not exists idx_bookings_date on public.bookings(booking_date);
+create index if not exists idx_bookings_status on public.bookings(status);
+create index if not exists idx_water_orders_status on public.water_orders(status);
+create index if not exists idx_water_expenses_date on public.water_expenses(expense_date);
+
 -- ─────────────────────────────────────────────────────────────
 -- 6. خدمة طلب وايت ماء حلو (water_tanker_sizes & water_orders)
 -- ─────────────────────────────────────────────────────────────
