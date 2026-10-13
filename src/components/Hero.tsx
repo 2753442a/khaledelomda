@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { CalendarCheck, MessageCircle, Phone, Star, Users, Calendar } from 'lucide-react'
 import { generateWhatsAppLink } from '../lib/utils'
 import { useSettings } from '../contexts/SettingsContext'
+import PropertyShowcaseCard from './PropertyShowcaseCard'
 
 export const Hero: React.FC = () => {
   const { settings } = useSettings()
@@ -167,9 +168,14 @@ export const Hero: React.FC = () => {
           </a>
         </div>
 
+        {/* ── Direct Unit & Chalet Showcase ("1 اختر الوحدة والاستراحة") ── */}
+        <div className="w-full max-w-4xl mt-8 sm:mt-10 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+          <PropertyShowcaseCard />
+        </div>
+
         {/* Refined Frosted Emerald Stats Cards */}
         {settings.show_hero_stats !== false && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4 w-full max-w-3xl mt-10 sm:mt-12 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4 w-full max-w-3xl mt-8 sm:mt-10 animate-fade-in-up" style={{ animationDelay: '0.5s' }}>
             {stats.map((s, i) => (
               <div
                 key={i}

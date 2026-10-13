@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Plus, Edit3, Trash2, CheckCircle2, XCircle, Eye, EyeOff,
   Armchair, DollarSign, Tag, Image as ImageIcon, Sparkles,
-  Package, AlertTriangle, Loader2, Copy, Check
+  Package, AlertTriangle, Loader2, Copy, Check, Upload, Star,
+  Link as LinkIcon
 } from 'lucide-react'
 import { supabase, HeritageFurniture } from '../../lib/supabase'
 import ImageUploader from '../ImageUploader'
+import { uploadImageToSupabase } from '../../lib/imageUpload'
 
 interface HeritageFurnitureAdminTabProps {
   showToast: (msg: string, type?: 'success' | 'error') => void
@@ -20,6 +22,7 @@ export const INITIAL_HERITAGE_FURNITURE: HeritageFurniture[] = [
     price: 850,
     discount_price: 750,
     image_url: '/images/heritage-chair.jpg',
+    images: ['/images/heritage-chair.jpg'],
     features: ['صناعة يدوية عالية المتانة', 'خيزران وخشب طبيعي معالج', 'وسائد قماشية كلاسيكية مريحة', 'مناسب للمزارع والحدائق الخارجية', 'خفيف الوزن وسهل النقل والتخزين'],
     in_stock: true,
     stock_quantity: 8,
@@ -36,6 +39,9 @@ export const HeritageFurnitureAdminTab: React.FC<HeritageFurnitureAdminTabProps>
   const [showModal, setShowModal] = useState(false)
   const [editingItem, setEditingItem] = useState<HeritageFurniture | null>(null)
   const [tagInput, setTagInput] = useState('')
+  const [newImageUrl, setNewImageUrl] = useState('')
+  const [uploadingMulti, setUploadingMulti] = useState(false)
+  const multiFileInputRef = useRef<HTMLInputElement>(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
@@ -48,6 +54,7 @@ export const HeritageFurnitureAdminTab: React.FC<HeritageFurnitureAdminTabProps>
     price: '',
     discount_price: '',
     image_url: '/images/heritage-chair.jpg',
+    images: [] as string[],
     features: [] as string[],
     in_stock: true,
     stock_quantity: '10',
@@ -89,6 +96,7 @@ export const HeritageFurnitureAdminTab: React.FC<HeritageFurnitureAdminTabProps>
   const openCreateModal = () => {
     setEditingItem(null)
     setTagInput('')
+    setNewImageUrl('')
     setForm({
       name: '',
       category: 'كراسي',
@@ -96,6 +104,7 @@ export const HeritageFurnitureAdminTab: React.FC<HeritageFurnitureAdminTabProps>
       price: '',
       discount_price: '',
       image_url: '/images/heritage-chair.jpg',
+      images: ['/images/heritage-chair.jpg'],
       features: ['صناعة يدوية عالية المتانة', 'خيزران وخشب طبيعي معالج', 'مناسب للمزارع والحدائق'],
       in_stock: true,
       stock_quantity: '10',
@@ -108,13 +117,19 @@ export const HeritageFurnitureAdminTab: React.FC<HeritageFurnitureAdminTabProps>
   const openEditModal = (item: HeritageFurniture) => {
     setEditingItem(item)
     setTagInput('')
+    setNewImageUrl('')
+    const existingImgs = Array.isArray(item.images) && item.images.length > 0
+      ? item.images
+      : (item.image_url ? [item.image_url] : [])
+
     setForm({
       name: item.name,
       category: item.category || 'كراسي',
       description: item.description,
       price: String(item.price),
       discount_price: item.discount_price ? String(item.discount_price) : '',
-      image_url: item.image_url,
+      image_url: item.image_url || existingImgs[0] || '/images/heritage-chair.jpg',
+      images: existingImgs,
       features: Array.isArray(item.features) ? [...item.features] : [],
       in_stock: item.in_stock ?? true,
       stock_quantity: String(item.stock_quantity ?? 10),
@@ -122,6 +137,66 @@ export const HeritageFurnitureAdminTab: React.FC<HeritageFurnitureAdminTabProps>
       is_active: item.is_active ?? true,
     })
     setShowModal(true)
+  }
+
+  const handleMultiFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+    setUploadingMulti(true)
+    try {
+      const uploadedUrls: string[] = []
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        const res = await uploadImageToSupabase(file, 'resort-media', 'furniture')
+        if (res?.url) uploadedUrls.push(res.url)
+      }
+      setForm(f => {
+        const combined = [...f.images, ...uploadedUrls]
+        return {
+          ...f,
+          images: combined,
+          image_url: f.image_url || combined[0] || '/images/heritage-chair.jpg',
+        }
+      })
+      showToast(`تم رفع ${uploadedUrls.length} صورة بنجاح ✅`)
+    } catch (err: any) {
+      showToast('⚠️ تعذر رفع بعض الصور: ' + (err.message || ''), 'error')
+    } finally {
+      setUploadingMulti(false)
+      if (multiFileInputRef.current) multiFileInputRef.current.value = ''
+    }
+  }
+
+  const handleAddImageUrl = () => {
+    const trimmed = newImageUrl.trim()
+    if (!trimmed) return
+    setForm(f => {
+      const combined = [...f.images, trimmed]
+      return {
+        ...f,
+        images: combined,
+        image_url: f.image_url || trimmed,
+      }
+    })
+    setNewImageUrl('')
+  }
+
+  const handleRemoveImage = (index: number) => {
+    setForm(f => {
+      const removed = f.images[index]
+      const nextImages = f.images.filter((_, i) => i !== index)
+      const nextCover = f.image_url === removed ? (nextImages[0] || '') : f.image_url
+      return {
+        ...f,
+        images: nextImages,
+        image_url: nextCover,
+      }
+    })
+  }
+
+  const handleSetCover = (url: string) => {
+    setForm(f => ({ ...f, image_url: url }))
+    showToast('تم تعيين صورة الغلاف الرئيسية 🌟')
   }
 
   const handleAddTag = () => {
@@ -211,8 +286,13 @@ export const HeritageFurnitureAdminTab: React.FC<HeritageFurnitureAdminTabProps>
       showToast('يرجى تحديد السعر بشكل صحيح', 'error')
       return
     }
-    if (!form.image_url.trim()) {
-      showToast('يرجى تحديد صورة للمنتج', 'error')
+
+    const validImages = (form.images || []).filter(Boolean)
+    const cover = form.image_url || validImages[0] || '/images/heritage-chair.jpg'
+    const finalImages = validImages.length > 0 ? validImages : (cover ? [cover] : [])
+
+    if (!cover.trim()) {
+      showToast('يرجى تحديد صورة واحدة على الأقل للمنتج', 'error')
       return
     }
 
@@ -223,7 +303,8 @@ export const HeritageFurnitureAdminTab: React.FC<HeritageFurnitureAdminTabProps>
       description: form.description.trim(),
       price: Number(form.price),
       discount_price: form.discount_price ? Number(form.discount_price) : null,
-      image_url: form.image_url.trim(),
+      image_url: cover.trim(),
+      images: finalImages,
       features: form.features,
       in_stock: form.in_stock,
       stock_quantity: parseInt(form.stock_quantity, 10) || 0,
@@ -607,29 +688,148 @@ export const HeritageFurnitureAdminTab: React.FC<HeritageFurnitureAdminTabProps>
                 </div>
               </div>
 
-              {/* Image Selection & Quick Preset */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-gray-300">
-                    صورة القطعة التراثية *
-                  </label>
+              {/* Multi-Image Management Section */}
+              <div className="space-y-3 p-4 rounded-2xl bg-white/5 border border-amber-500/20">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <ImageIcon size={16} className="text-amber-400" />
+                    <label className="block text-xs font-bold text-white">
+                      معرض صور المنتج ({form.images.length} صور)
+                    </label>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setForm(f => ({ ...f, image_url: '/images/heritage-chair.jpg' }))}
+                    onClick={() => {
+                      if (!form.images.includes('/images/heritage-chair.jpg')) {
+                        setForm(f => ({
+                          ...f,
+                          images: [...f.images, '/images/heritage-chair.jpg'],
+                          image_url: f.image_url || '/images/heritage-chair.jpg'
+                        }))
+                      }
+                    }}
                     className="text-xs text-amber-400 hover:text-amber-300 underline flex items-center gap-1"
                   >
-                    <span>استخدام صورة الكراسي التراثية المرفقة</span>
+                    <span>+ إضافة صورة الكراسي التراثية الافتراضية</span>
                   </button>
                 </div>
 
-                <ImageUploader
-                  value={form.image_url}
-                  onChange={(url) => setForm(f => ({ ...f, image_url: url }))}
-                  label="اختر صورة للقطعة من جهازك أو الصق رابط مباشر"
-                  helperText="يمكنك رفع صورة عالية الدقة للكراسي أو الطاولة"
-                  aspectRatio="card"
-                  folder="furniture"
-                />
+                {/* Upload Action Buttons */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* Hidden Multi-file input */}
+                  <input
+                    ref={multiFileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={handleMultiFileUpload}
+                    className="hidden"
+                  />
+
+                  <button
+                    type="button"
+                    disabled={uploadingMulti}
+                    onClick={() => multiFileInputRef.current?.click()}
+                    className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    {uploadingMulti ? (
+                      <>
+                        <Loader2 size={15} className="animate-spin" />
+                        <span>جاري رفع الصور...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload size={15} />
+                        <span>رفع عدة صور من جهازك 📷</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Add URL form */}
+                  <div className="flex gap-1.5">
+                    <input
+                      type="url"
+                      placeholder="أو الصق رابط صورة مباشر..."
+                      value={newImageUrl}
+                      onChange={e => setNewImageUrl(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddImageUrl() } }}
+                      className="input-field min-h-[38px] text-xs flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddImageUrl}
+                      className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs shrink-0 border border-white/10"
+                    >
+                      إضافة
+                    </button>
+                  </div>
+                </div>
+
+                {/* Thumbnails preview & management grid */}
+                {form.images.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 pt-2 max-h-60 overflow-y-auto no-scrollbar">
+                    {form.images.map((imgUrl, idx) => {
+                      const isCover = form.image_url === imgUrl || (!form.image_url && idx === 0)
+                      return (
+                        <div
+                          key={idx}
+                          className={`relative rounded-xl overflow-hidden border-2 group transition-all ${
+                            isCover ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-lg' : 'border-white/15 hover:border-white/40'
+                          }`}
+                        >
+                          <div className="h-24 w-full bg-slate-950 overflow-hidden">
+                            <img
+                              src={imgUrl}
+                              alt=""
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '/images/heritage-chair.jpg'
+                              }}
+                            />
+                          </div>
+
+                          {/* Cover badge */}
+                          {isCover && (
+                            <span className="absolute top-1 right-1 px-1.5 py-0.5 rounded-md bg-amber-500 text-slate-950 text-[10px] font-black flex items-center gap-0.5 shadow">
+                              <Star size={10} fill="currentColor" />
+                              الغلاف
+                            </span>
+                          )}
+
+                          {/* Quick action bar overlay */}
+                          <div className="absolute inset-x-0 bottom-0 p-1 bg-black/80 backdrop-blur-sm flex items-center justify-between gap-1">
+                            {!isCover ? (
+                              <button
+                                type="button"
+                                onClick={() => handleSetCover(imgUrl)}
+                                className="text-[10px] text-amber-300 hover:text-white px-1.5 py-0.5 rounded bg-white/10 hover:bg-amber-500/30 flex items-center gap-1 transition-colors"
+                                title="تعيين كصورة رئيسية للمنتج"
+                              >
+                                <Star size={10} />
+                                <span>اجعلها غلاف</span>
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-amber-400 font-bold px-1">رئيسية</span>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(idx)}
+                              className="p-1 rounded text-red-400 hover:text-white hover:bg-red-500/40 transition-colors"
+                              title="حذف هذه الصورة"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl border border-dashed border-white/20 text-center text-xs text-gray-400">
+                    لم يتم إضافة أي صور بعد. ارفع صوراً أو استخدم صورة الكراسي الافتراضية.
+                  </div>
+                )}
               </div>
 
               {/* Tags / Features */}

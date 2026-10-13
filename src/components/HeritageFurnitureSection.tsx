@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Armchair, Sparkles, MessageCircle, Phone, Check,
-  ShoppingBag, CheckCircle2, ChevronLeft, Package, MapPin, X, ArrowLeft,
-  Navigation, Loader2, MapPinned, CreditCard, Truck, Banknote
+  ShoppingBag, CheckCircle2, ChevronLeft, ChevronRight, Package, MapPin, X, ArrowLeft,
+  Navigation, Loader2, MapPinned, CreditCard, Truck, Banknote, Camera
 } from 'lucide-react'
 import { supabase, HeritageFurniture } from '../lib/supabase'
 import { INITIAL_HERITAGE_FURNITURE } from './admin/HeritageFurnitureAdminTab'
@@ -16,6 +16,227 @@ interface HeritageFurnitureSectionProps {
   limit?: number
 }
 
+interface FurnitureProductCardProps {
+  item: HeritageFurniture
+  onOpenOrder: (item: HeritageFurniture) => void
+  onDirectWhatsApp: (item: HeritageFurniture) => void
+  onOpenGallery: (item: HeritageFurniture, index: number) => void
+}
+
+const FurnitureProductCard: React.FC<FurnitureProductCardProps> = ({
+  item,
+  onOpenOrder,
+  onDirectWhatsApp,
+  onOpenGallery,
+}) => {
+  const photos = Array.isArray(item.images) && item.images.length > 0
+    ? item.images
+    : (item.image_url ? [item.image_url] : ['/images/heritage-chair.jpg'])
+
+  const [currentIdx, setCurrentIdx] = useState(0)
+  const [isHovered, setIsHovered] = useState(false)
+
+  // Smooth auto-slide if multiple photos
+  useEffect(() => {
+    if (photos.length <= 1 || isHovered) return
+    const timer = setInterval(() => {
+      setCurrentIdx(prev => (prev + 1) % photos.length)
+    }, 4000)
+    return () => clearInterval(timer)
+  }, [photos.length, isHovered])
+
+  const tags = Array.isArray(item.features) ? item.features : []
+  const activePrice = item.discount_price ? item.discount_price : item.price
+  const hasDiscount = Boolean(item.discount_price && item.discount_price < item.price)
+
+  return (
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="rounded-3xl border border-white/10 bg-slate-900/70 hover:border-amber-500/40 backdrop-blur-md shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden group hover:scale-[1.01]"
+    >
+      {/* Product Image Banner with smooth carousel */}
+      <div className="relative h-64 sm:h-72 w-full overflow-hidden bg-slate-950 select-none">
+        {photos.map((src, idx) => {
+          const isActive = idx === currentIdx
+          return (
+            <div
+              key={idx}
+              className={`absolute inset-0 transition-all duration-700 ease-in-out ${
+                isActive ? 'opacity-100 scale-100 z-10' : 'opacity-0 scale-105 pointer-events-none z-0'
+              }`}
+            >
+              <img
+                src={src}
+                alt={item.name}
+                className="w-full h-full object-cover object-center cursor-pointer"
+                onClick={() => onOpenGallery(item, idx)}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = '/images/heritage-chair.jpg'
+                }}
+              />
+            </div>
+          )
+        })}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent pointer-events-none z-10" />
+
+        {/* Top Badges */}
+        <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
+          <span className="px-3.5 py-1 rounded-full text-xs font-bold bg-slate-950/80 border border-white/15 text-amber-300 backdrop-blur-md shadow-md">
+            {item.category || 'كراسي'}
+          </span>
+          {hasDiscount && (
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-600 text-white shadow-md animate-pulse">
+              عرض خاص 🔥
+            </span>
+          )}
+        </div>
+
+        <div className="absolute top-4 left-4 z-20">
+          <span className={`px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md border ${
+            item.in_stock
+              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+              : 'bg-red-500/20 text-red-300 border-red-500/40'
+          }`}>
+            {item.in_stock ? 'جاهز للتسليم 📦' : 'نفذت الكمية'}
+          </span>
+        </div>
+
+        {/* Next / Prev buttons if multiple images */}
+        {photos.length > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setCurrentIdx(prev => (prev - 1 + photos.length) % photos.length)
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full glass hover:bg-amber-500 hover:text-slate-950 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-md"
+              aria-label="السابق"
+            >
+              <ChevronRight size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setCurrentIdx(prev => (prev + 1) % photos.length)
+              }}
+              className="absolute left-2 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full glass hover:bg-amber-500 hover:text-slate-950 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-md"
+              aria-label="التالي"
+            >
+              <ChevronLeft size={18} />
+            </button>
+          </>
+        )}
+
+        {/* Bottom gallery trigger & indicators */}
+        <div className="absolute bottom-3 inset-x-3 z-20 flex items-center justify-between gap-1.5">
+          {photos.length > 1 ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenGallery(item, currentIdx)
+              }}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-black/80 hover:bg-black text-amber-300 border border-amber-500/40 backdrop-blur-md flex items-center gap-1 shadow-md transition-transform hover:scale-105"
+            >
+              <Camera size={13} />
+              <span>معرض الصور ({photos.length} صور) 📸</span>
+            </button>
+          ) : <div />}
+
+          {photos.length > 1 && (
+            <div className="flex items-center gap-1 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/10">
+              {photos.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setCurrentIdx(i)
+                  }}
+                  className={`rounded-full transition-all duration-300 ${
+                    i === currentIdx ? 'w-4 h-1.5 bg-amber-400' : 'w-1.5 h-1.5 bg-white/40'
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Card Body */}
+      <div className="p-6 flex-1 flex flex-col justify-between space-y-5">
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="text-lg sm:text-xl font-bold text-white leading-snug">
+              {item.name}
+            </h3>
+          </div>
+
+          <p className="text-xs sm:text-sm text-gray-300 leading-relaxed line-clamp-3">
+            {item.description}
+          </p>
+
+          {/* Feature chips */}
+          {tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {tags.map((t, idx) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20"
+                >
+                  <CheckCircle2 size={11} className="text-amber-400" />
+                  <span>{t}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Price and Order Buttons */}
+        <div className="pt-4 border-t border-white/10 space-y-3">
+          <div className="flex items-baseline justify-between">
+            <span className="text-xs text-gray-400 font-medium">السعر:</span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-black text-amber-300">
+                {formatCurrency(activePrice)}
+              </span>
+              {hasDiscount && (
+                <span className="text-xs text-gray-500 line-through">
+                  {formatCurrency(item.price)}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => onOpenOrder(item)}
+              disabled={!item.in_stock}
+              className="py-3 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-amber-950/40 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <ShoppingBag size={15} />
+              <span>طلب شراء مباشر</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onDirectWhatsApp(item)}
+              className="py-3 px-3 rounded-xl glass hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all active:scale-95"
+            >
+              <MessageCircle size={15} className="text-emerald-400" />
+              <span>واتساب المالك</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> = ({
   showTitle = true,
   limit
@@ -25,6 +246,7 @@ export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> =
   const [items, setItems] = useState<HeritageFurniture[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedItemForOrder, setSelectedItemForOrder] = useState<HeritageFurniture | null>(null)
+  const [galleryItem, setGalleryItem] = useState<{ item: HeritageFurniture; index: number } | null>(null)
 
   // Order modal states
   const [orderQuantity, setOrderQuantity] = useState(1)
@@ -217,126 +439,17 @@ export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> =
         </div>
       )}
 
-      {/* Furniture Grid */}
+      {/* Furniture Grid with Smooth Multi-Image Carousels */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 relative z-10">
-        {displayedItems.map((item) => {
-          const tags = Array.isArray(item.features) ? item.features : []
-          const activePrice = item.discount_price ? item.discount_price : item.price
-          const hasDiscount = Boolean(item.discount_price && item.discount_price < item.price)
-
-          return (
-            <div
-              key={item.id}
-              className="rounded-3xl border border-white/10 bg-slate-900/70 hover:border-amber-500/40 backdrop-blur-md shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden group hover:scale-[1.01]"
-            >
-              {/* Product Image Banner */}
-              <div className="relative h-64 sm:h-72 w-full overflow-hidden bg-slate-950">
-                <img
-                  src={item.image_url}
-                  alt={item.name}
-                  className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 select-none"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement
-                    if (target.dataset.fallbackApplied) return
-                    target.dataset.fallbackApplied = 'true'
-                    target.src = '/images/heritage-chair.jpg'
-                  }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
-
-                {/* Top Badges */}
-                <div className="absolute top-4 right-4 flex items-center gap-2">
-                  <span className="px-3.5 py-1 rounded-full text-xs font-bold bg-slate-950/80 border border-white/15 text-amber-300 backdrop-blur-md shadow-md">
-                    {item.category || 'كراسي'}
-                  </span>
-                  {hasDiscount && (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-600 text-white shadow-md animate-pulse">
-                      عرض خاص 🔥
-                    </span>
-                  )}
-                </div>
-
-                <div className="absolute top-4 left-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md border ${
-                    item.in_stock
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                      : 'bg-red-500/20 text-red-300 border-red-500/40'
-                  }`}>
-                    {item.in_stock ? 'جاهز للتسليم 📦' : 'نفذت الكمية'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Card Body */}
-              <div className="p-6 flex-1 flex flex-col justify-between space-y-5">
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="text-lg sm:text-xl font-bold text-white leading-snug">
-                      {item.name}
-                    </h3>
-                  </div>
-
-                  <p className="text-xs sm:text-sm text-gray-300 leading-relaxed line-clamp-3">
-                    {item.description}
-                  </p>
-
-                  {/* Feature chips */}
-                  {tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {tags.map((t, idx) => (
-                        <span
-                          key={idx}
-                          className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20"
-                        >
-                          <CheckCircle2 size={11} className="text-amber-400" />
-                          <span>{t}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Price and Order Buttons */}
-                <div className="pt-4 border-t border-white/10 space-y-3">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-xs text-gray-400 font-medium">السعر:</span>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-black text-amber-300">
-                        {formatCurrency(activePrice)}
-                      </span>
-                      {hasDiscount && (
-                        <span className="text-xs text-gray-500 line-through">
-                          {formatCurrency(item.price)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenOrderModal(item)}
-                      disabled={!item.in_stock}
-                      className="py-3 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-amber-950/40 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
-                    >
-                      <ShoppingBag size={15} />
-                      <span>طلب شراء مباشر</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleDirectWhatsAppOrder(item)}
-                      className="py-3 px-3 rounded-xl glass hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all active:scale-95"
-                    >
-                      <MessageCircle size={15} className="text-emerald-400" />
-                      <span>واتساب المالك</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )
-        })}
+        {displayedItems.map((item) => (
+          <FurnitureProductCard
+            key={item.id}
+            item={item}
+            onOpenOrder={handleOpenOrderModal}
+            onDirectWhatsApp={handleDirectWhatsAppOrder}
+            onOpenGallery={(itm, idx) => setGalleryItem({ item: itm, index: idx })}
+          />
+        ))}
       </div>
 
       {/* Quick Order Modal — Mobile-First Bottom Sheet */}
@@ -682,6 +795,99 @@ export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> =
           </div>
         </div>
       )}
+
+      {/* Heritage Furniture Multi-Image Lightbox Modal */}
+      {galleryItem && (() => {
+        const item = galleryItem.item
+        const photos = Array.isArray(item.images) && item.images.length > 0
+          ? item.images
+          : (item.image_url ? [item.image_url] : ['/images/heritage-chair.jpg'])
+        const currentIdx = galleryItem.index
+        const currentSrc = photos[currentIdx] || photos[0]
+
+        return (
+          <div
+            onClick={() => setGalleryItem(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/95 backdrop-blur-md animate-fade-in"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-4xl w-full rounded-3xl overflow-hidden border border-amber-500/30 shadow-2xl bg-slate-950 flex flex-col text-right animate-scale-in"
+            >
+              {/* Header */}
+              <div className="p-4 bg-slate-900/95 border-b border-white/10 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                    <Camera size={18} className="text-amber-400" />
+                    <span>{item.name} — معرض الصور</span>
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    صورة {currentIdx + 1} من {photos.length}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setGalleryItem(null)}
+                  className="w-9 h-9 rounded-full glass hover:bg-white/20 text-gray-300 hover:text-white flex items-center justify-center transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Main Image Stage */}
+              <div className="relative h-[55vh] sm:h-[65vh] bg-black flex items-center justify-center overflow-hidden">
+                <img
+                  src={currentSrc}
+                  alt={item.name}
+                  className="max-w-full max-h-full object-contain select-none transition-all duration-300"
+                />
+
+                {photos.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setGalleryItem({ item, index: (currentIdx > 0 ? currentIdx - 1 : photos.length - 1) })}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full glass hover:bg-amber-500 hover:text-slate-950 text-white flex items-center justify-center shadow-xl transition-transform hover:scale-110 active:scale-95"
+                      aria-label="الصورة السابقة"
+                    >
+                      <ChevronRight size={24} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGalleryItem({ item, index: (currentIdx < photos.length - 1 ? currentIdx + 1 : 0) })}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full glass hover:bg-amber-500 hover:text-slate-950 text-white flex items-center justify-center shadow-xl transition-transform hover:scale-110 active:scale-95"
+                      aria-label="الصورة التالية"
+                    >
+                      <ChevronLeft size={24} />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Bottom Thumbnails */}
+              {photos.length > 1 && (
+                <div className="p-3 bg-slate-900/95 border-t border-white/10 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                  {photos.map((pUrl, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setGalleryItem({ item, index: i })}
+                      className={`relative w-16 h-12 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${
+                        currentIdx === i
+                          ? 'border-amber-400 ring-2 ring-amber-400/40 scale-105 shadow-md'
+                          : 'border-white/10 hover:border-white/30 opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={pUrl} alt="" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
     </section>
   )
 }

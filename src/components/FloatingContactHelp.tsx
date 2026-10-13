@@ -191,14 +191,14 @@ export const FloatingContactHelp: React.FC = () => {
       case '/admin':
         return {
           id: 'admin',
-          title: 'الدعم السريع للمالك والإدارة',
-          subtitle: 'تواصل مباشر وسريع للدعم الفني وإدارة النظام',
-          badge: 'الدعم الإداري 🛡️',
+          title: 'التواصل المباشر مع المالك',
+          subtitle: 'تواصل فوري وسريع مع أبو خالد للاستفسارات والخدمات',
+          badge: 'التواصل مع المالك 📞',
           icon: <HelpCircle className="text-amber-400" size={18} />,
-          defaultMessage: 'السلام عليكم، تواصل مباشر من لوحة تحكم منتجع خالد العمدة.',
+          defaultMessage: 'السلام عليكم أبو خالد، تواصل مباشر معك بخصوص خدمات المنتجع.',
           quickQuestions: [
-            'طلب مساعدة فنية في لوحة التحكم',
-            'استفسار عن إعدادات الحساب والتقويم'
+            'استفسار عن حجز المنتجع أو لوحة التحكم',
+            'طلب مساعدة مباشرة وتنسيق الحجز'
           ],
           whatsappNumber: waPhone,
           phoneNumber: directPhone

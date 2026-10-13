@@ -83,7 +83,17 @@ const BookPage: React.FC = () => {
         supabase.from('properties').select('*').eq('is_active', true).order('name'),
         supabase.from('addons').select('*').eq('is_active', true),
       ])
-      if (p) { setProperties(p); if (p.length === 1) setSelectedProperty(p[0]) }
+      if (p) {
+        setProperties(p)
+        const params = new URLSearchParams(window.location.search)
+        const paramId = params.get('propertyId')
+        const matched = paramId ? p.find((x: any) => x.id === paramId) : null
+        if (matched) {
+          setSelectedProperty(matched)
+        } else if (p.length === 1) {
+          setSelectedProperty(p[0])
+        }
+      }
       if (a) setAddons(a)
     }
     load()
