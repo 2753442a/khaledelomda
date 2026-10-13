@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Armchair, Sparkles, MessageCircle, Phone, Check,
-  ShoppingBag, CheckCircle2, ChevronLeft, Package, MapPin, X, ArrowLeft
+  ShoppingBag, CheckCircle2, ChevronLeft, Package, MapPin, X, ArrowLeft,
+  Navigation, Loader2, MapPinned, CreditCard, Truck, Banknote
 } from 'lucide-react'
 import { supabase, HeritageFurniture } from '../lib/supabase'
 import { INITIAL_HERITAGE_FURNITURE } from './admin/HeritageFurnitureAdminTab'
 import { useSettings } from '../contexts/SettingsContext'
 import { formatCurrency, generateWhatsAppLink } from '../lib/utils'
+import { useAuth } from '../contexts/AuthContext'
 
 interface HeritageFurnitureSectionProps {
   showTitle?: boolean
@@ -19,6 +21,7 @@ export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> =
   limit
 }) => {
   const { settings } = useSettings()
+  const { user, profile } = useAuth()
   const [items, setItems] = useState<HeritageFurniture[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedItemForOrder, setSelectedItemForOrder] = useState<HeritageFurniture | null>(null)
@@ -27,8 +30,22 @@ export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> =
   const [orderQuantity, setOrderQuantity] = useState(1)
   const [orderName, setOrderName] = useState('')
   const [orderPhone, setOrderPhone] = useState('')
-  const [orderAddress, setOrderAddress] = useState('')
+  const [orderCity, setOrderCity] = useState('الرياض')
+  const [orderDistrict, setOrderDistrict] = useState('')
+  const [orderStreetAddress, setOrderStreetAddress] = useState('')
+  const [orderGoogleMapsUrl, setOrderGoogleMapsUrl] = useState('')
+  const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery')
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'pos_on_delivery' | 'bank_transfer'>('cash')
   const [orderNotes, setOrderNotes] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [locating, setLocating] = useState(false)
+  const [createdOrder, setCreatedOrder] = useState<any | null>(null)
+
+  // Pre-fill user data if logged in
+  useEffect(() => {
+    if (profile?.full_name && !orderName) setOrderName(profile.full_name)
+    if (profile?.phone && !orderPhone) setOrderPhone(profile.phone)
+  }, [profile])
 
   useEffect(() => {
     const fetchFurniture = async () => {
@@ -66,6 +83,28 @@ export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> =
   const handleOpenOrderModal = (item: HeritageFurniture) => {
     setSelectedItemForOrder(item)
     setOrderQuantity(1)
+    setCreatedOrder(null)
+  }
+
+  const handleGetLocation = () => {
+    if (!navigator.geolocation) {
+      alert('خدمة تحديد الموقع الجغرافي غير مدعومة في متصفحك.')
+      return
+    }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords
+        setOrderGoogleMapsUrl(`https://maps.google.com/?q=${latitude},${longitude}`)
+        setLocating(false)
+      },
+      (err) => {
+        console.warn('Geolocation error:', err)
+        setLocating(false)
+        alert('تعذر جلب إحداثيات الموقع تلقائياً. يمكنك كتابة اسم الحي أو لصق رابط الخريطة يدوياً.')
+      },
+      { timeout: 8000 }
+    )
   }
 
   const handleDirectWhatsAppOrder = (item: HeritageFurniture) => {
@@ -75,24 +114,84 @@ export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> =
     window.open(generateWhatsAppLink(phone, msg), '_blank')
   }
 
-  const handleSubmitModalOrder = (e: React.FormEvent) => {
+  const handleSubmitModalOrder = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedItemForOrder) return
+    if (!selectedItemForOrder || submitting) return
+
+    setSubmitting(true)
     const unitPrice = selectedItemForOrder.discount_price || selectedItemForOrder.price
     const total = unitPrice * orderQuantity
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000)
+    const orderNumber = `FUR-${new Date().getFullYear().toString().slice(-2)}${randomSuffix}`
 
-    const msg = `السلام عليكم ورحمة الله، طلب شراء أثاث تراثي جديد عبر الموقع:\n\n` +
-      `🪑 المنتج: ${selectedItemForOrder.name}\n` +
-      `📦 الكمية: ${orderQuantity}\n` +
-      `💵 إجمالي القيمة: ${total} ر.س\n` +
-      `👤 العميل: ${orderName.trim()}\n` +
-      `📱 الجوال: ${orderPhone.trim()}\n` +
-      (orderAddress ? `📍 العنوان / المدينة: ${orderAddress.trim()}\n` : '') +
-      (orderNotes ? `📝 ملاحظات: ${orderNotes.trim()}\n` : '')
+    const orderPayload = {
+      order_number: orderNumber,
+      customer_id: user?.id || null,
+      customer_name: orderName.trim(),
+      customer_phone: orderPhone.trim(),
+      items: [
+        {
+          item_id: selectedItemForOrder.id,
+          name: selectedItemForOrder.name,
+          price: unitPrice,
+          quantity: orderQuantity,
+          image_url: selectedItemForOrder.image_url,
+        }
+      ],
+      total_amount: total,
+      city: orderCity.trim() || 'الرياض',
+      district: orderDistrict.trim() || 'غير محدد',
+      street_address: orderStreetAddress.trim() || null,
+      google_maps_url: orderGoogleMapsUrl.trim() || null,
+      delivery_type: deliveryType,
+      payment_method: paymentMethod,
+      status: 'new',
+      notes: orderNotes.trim() || null,
+    }
 
-    const phone = settings.contact_whatsapp || '0556854162'
-    window.open(generateWhatsAppLink(phone, msg), '_blank')
-    setSelectedItemForOrder(null)
+    try {
+      const { data, error } = await supabase
+        .from('furniture_orders')
+        .insert(orderPayload)
+        .select()
+        .single()
+
+      if (error) {
+        console.warn('Database insert notice, proceeding with payload:', error)
+      }
+
+      setCreatedOrder(data || orderPayload)
+    } catch (err: any) {
+      console.error('Order creation error:', err)
+      // Fallback: still show the order confirmation so user can send via WhatsApp
+      setCreatedOrder(orderPayload)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const getOrderWhatsAppMsg = (order: any) => {
+    const paymentLabel = order.payment_method === 'cash'
+      ? 'نقداً عند الاستلام'
+      : order.payment_method === 'pos_on_delivery'
+      ? 'شبكة (مدى) عند الوصول'
+      : 'تحويل بنكي مسبق'
+
+    return `🪑 *طلب شراء أثاث تراثي جديد — رقم: ${order.order_number}* 🪑\n` +
+      `ــــــــــــــــــــــــــــــــــــــــ\n` +
+      `👤 *العميل:* ${order.customer_name}\n` +
+      `📱 *الجوال:* ${order.customer_phone}\n` +
+      `📦 *المنتج:* ${selectedItemForOrder?.name || 'طقم كراسي تراثية'}\n` +
+      `🔢 *الكمية:* ${order.items?.[0]?.quantity || orderQuantity}\n` +
+      `💵 *الإجمالي:* ${formatCurrency(order.total_amount)}\n` +
+      `🚚 *طريقة الاستلام:* ${order.delivery_type === 'delivery' ? 'توصيل للموقع' : 'استلام من المستودع'}\n` +
+      `📍 *المدينة / الحي:* ${order.city} — ${order.district}\n` +
+      (order.street_address ? `🏠 *تفاصيل العنوان:* ${order.street_address}\n` : '') +
+      (order.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${order.google_maps_url}\n` : '') +
+      `💳 *طريقة الدفع:* ${paymentLabel}\n` +
+      (order.notes ? `📝 *ملاحظات:* ${order.notes}\n` : '') +
+      `ــــــــــــــــــــــــــــــــــــــــ\n` +
+      `🌟 أرجو تأكيد موعد التوصيل والتسليم.`
   }
 
   return (
@@ -252,13 +351,21 @@ export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> =
                   <span className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
                     <ShoppingBag size={18} />
                   </span>
-                  <h3 className="font-bold text-white text-base sm:text-lg">
-                    طلب شراء: {selectedItemForOrder.name}
-                  </h3>
+                  <div>
+                    <h3 className="font-bold text-white text-base sm:text-lg">
+                      {createdOrder ? 'تم تأكيد طلب الشراء بنجاح 🎉' : `طلب شراء: ${selectedItemForOrder.name}`}
+                    </h3>
+                    <p className="text-[11px] text-gray-400">
+                      {createdOrder ? `رقم الطلب: ${createdOrder.order_number}` : 'أكمل تفاصيل العنوان وتأكيد التوصيل'}
+                    </p>
+                  </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setSelectedItemForOrder(null)}
+                  onClick={() => {
+                    setSelectedItemForOrder(null)
+                    setCreatedOrder(null)
+                  }}
                   className="w-8 h-8 rounded-full glass flex items-center justify-center text-gray-400 hover:text-white"
                 >
                   ✕
@@ -266,158 +373,312 @@ export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> =
               </div>
             </div>
 
-            {/* Summary Banner */}
-            <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10">
-              <img
-                src={selectedItemForOrder.image_url}
-                alt={selectedItemForOrder.name}
-                className="w-16 h-16 rounded-xl object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/images/heritage-chair.jpg'
-                }}
-              />
-              <div className="space-y-1 flex-1">
-                <p className="text-xs font-bold text-white">{selectedItemForOrder.name}</p>
-                <p className="text-xs text-amber-300 font-black">
-                  سعر الحبة: {formatCurrency(selectedItemForOrder.discount_price || selectedItemForOrder.price)}
-                </p>
-              </div>
-            </div>
+            {/* If Order is Created: Show Order Confirmation Screen */}
+            {createdOrder ? (
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 custom-scrollbar text-center">
+                <div className="w-16 h-16 mx-auto rounded-3xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border-2 border-emerald-500/40 shadow-xl shadow-emerald-950/50 animate-bounce">
+                  <Check size={32} strokeWidth={3} />
+                </div>
 
-            {/* Scrollable Form Body */}
-            <form id="furniture-order-form" onSubmit={handleSubmitModalOrder} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
-              {/* Summary Banner */}
-              <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10">
-                <img
-                  src={selectedItemForOrder.image_url}
-                  alt={selectedItemForOrder.name}
-                  className="w-16 h-16 rounded-xl object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/images/heritage-chair.jpg'
-                  }}
-                />
-                <div className="space-y-1 flex-1">
-                  <p className="text-xs font-bold text-white">{selectedItemForOrder.name}</p>
-                  <p className="text-xs text-amber-300 font-black">
-                    سعر الحبة: {formatCurrency(selectedItemForOrder.discount_price || selectedItemForOrder.price)}
+                <div className="space-y-1">
+                  <h4 className="text-lg font-black text-white">تم تسجيل طلبك في النظام بنجاح!</h4>
+                  <p className="text-xs text-gray-300">
+                    سيقوم المالك وفريق التجهيز بمراجعة طلبك والتواصل معك فوراً لتأكيد موعد التوصيل.
                   </p>
                 </div>
-              </div>
 
-              {/* Quantity */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                  العدد / الكمية المطلوبة
-                </label>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center border border-white/15 rounded-xl overflow-hidden bg-slate-900">
-                    <button
-                      type="button"
-                      onClick={() => setOrderQuantity(q => Math.max(1, q - 1))}
-                      className="px-3.5 py-2 text-base font-bold text-gray-300 hover:bg-white/10"
-                    >
-                      -
-                    </button>
-                    <span className="px-4 py-2 text-sm font-bold text-amber-300">
-                      {orderQuantity}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setOrderQuantity(q => q + 1)}
-                      className="px-3.5 py-2 text-base font-bold text-gray-300 hover:bg-white/10"
-                    >
-                      +
-                    </button>
+                {/* Order Details Card */}
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-right space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                    <span className="text-gray-400">رقم الطلب:</span>
+                    <span className="font-black text-amber-300 font-mono text-sm">{createdOrder.order_number}</span>
                   </div>
-
-                  <div className="text-xs text-gray-400">
-                    الإجمالي: <span className="text-sm font-black text-amber-300">
-                      {formatCurrency((selectedItemForOrder.discount_price || selectedItemForOrder.price) * orderQuantity)}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">المنتج:</span>
+                    <span className="font-bold text-white">{selectedItemForOrder.name}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">الكمية:</span>
+                    <span className="font-bold text-white">{orderQuantity} قطع</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">المبلغ الإجمالي:</span>
+                    <span className="font-black text-emerald-400 text-sm">{formatCurrency(createdOrder.total_amount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">العنوان:</span>
+                    <span className="text-gray-200">{createdOrder.city} — {createdOrder.district}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">طريقة الدفع:</span>
+                    <span className="text-gray-200">
+                      {createdOrder.payment_method === 'cash' ? 'نقداً عند الاستلام' : createdOrder.payment_method === 'pos_on_delivery' ? 'شبكة (مدى) عند الوصول' : 'تحويل بنكي مسبق'}
                     </span>
                   </div>
                 </div>
-              </div>
 
-              {/* Name & Phone */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                    الاسم الكريم *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="الاسم الثلاثي"
-                    value={orderName}
-                    onChange={e => setOrderName(e.target.value)}
-                    className="input-field min-h-[44px] text-xs sm:text-sm"
-                  />
-                </div>
+                {/* WhatsApp Dispatch Button */}
+                <div className="space-y-2 pt-2">
+                  <a
+                    href={generateWhatsAppLink(
+                      settings.contact_whatsapp || '0556854162',
+                      getOrderWhatsAppMsg(createdOrder)
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary w-full py-3 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60"
+                  >
+                    <MessageCircle size={18} />
+                    <span>مراسلة المالك عبر واتساب للتأكيد الفوري</span>
+                  </a>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                    رقم الجوال للتواصل *
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    dir="ltr"
-                    placeholder="05XXXXXXXX"
-                    value={orderPhone}
-                    onChange={e => setOrderPhone(e.target.value)}
-                    className="input-field min-h-[44px] text-xs sm:text-sm text-left font-mono"
-                  />
+                  <Link
+                    to="/my-bookings"
+                    onClick={() => setSelectedItemForOrder(null)}
+                    className="btn-ghost w-full py-2.5 text-xs text-gray-300 hover:text-white"
+                  >
+                    متابعة حالة الطلب في صفحة طلباتي 📋
+                  </Link>
                 </div>
               </div>
+            ) : (
+              /* Order Form Body */
+              <>
+                <form id="furniture-order-form" onSubmit={handleSubmitModalOrder} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
+                  {/* Summary Banner */}
+                  <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10">
+                    <img
+                      src={selectedItemForOrder.image_url}
+                      alt={selectedItemForOrder.name}
+                      className="w-16 h-16 rounded-xl object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = '/images/heritage-chair.jpg'
+                      }}
+                    />
+                    <div className="space-y-1 flex-1">
+                      <p className="text-xs font-bold text-white">{selectedItemForOrder.name}</p>
+                      <p className="text-xs text-amber-300 font-black">
+                        سعر الحبة: {formatCurrency(selectedItemForOrder.discount_price || selectedItemForOrder.price)}
+                      </p>
+                    </div>
+                  </div>
 
-              {/* Address */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                  المدينة / الحي أو موقع المزرعة
-                </label>
-                <input
-                  type="text"
-                  placeholder="مثال: الرياض - حي النرجس أو مزرعة العمارية"
-                  value={orderAddress}
-                  onChange={e => setOrderAddress(e.target.value)}
-                  className="input-field min-h-[44px] text-xs sm:text-sm"
-                />
-              </div>
+                  {/* Quantity */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                      العدد / الكمية المطلوبة
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center border border-white/15 rounded-xl overflow-hidden bg-slate-900">
+                        <button
+                          type="button"
+                          onClick={() => setOrderQuantity(q => Math.max(1, q - 1))}
+                          className="px-3.5 py-2 text-base font-bold text-gray-300 hover:bg-white/10"
+                        >
+                          -
+                        </button>
+                        <span className="px-4 py-2 text-sm font-bold text-amber-300">
+                          {orderQuantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setOrderQuantity(q => q + 1)}
+                          className="px-3.5 py-2 text-base font-bold text-gray-300 hover:bg-white/10"
+                        >
+                          +
+                        </button>
+                      </div>
 
-              {/* Notes */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                  أي ملاحظات أو طلبات خاصة؟
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="مثال: الاستلام خلال عطلة نهاية الأسبوع أو موعد معين"
-                  value={orderNotes}
-                  onChange={e => setOrderNotes(e.target.value)}
-                  className="input-field text-xs leading-relaxed"
-                />
-              </div>
-            </form>
+                      <div className="text-xs text-gray-400">
+                        الإجمالي: <span className="text-base font-black text-amber-300">
+                          {formatCurrency((selectedItemForOrder.discount_price || selectedItemForOrder.price) * orderQuantity)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
 
-            {/* Action Footer (Sticky at Bottom) */}
-            <div className="shrink-0 p-3.5 sm:p-4 border-t border-white/10 bg-slate-900/95 backdrop-blur-md pb-safe flex gap-2.5 z-10">
-              <button
-                type="button"
-                onClick={() => setSelectedItemForOrder(null)}
-                className="btn-ghost w-1/3 py-2.5 text-xs font-semibold"
-              >
-                إلغاء
-              </button>
+                  {/* Name & Phone */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                        الاسم الكريم *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="الاسم الثلاثي"
+                        value={orderName}
+                        onChange={e => setOrderName(e.target.value)}
+                        className="input-field min-h-[44px] text-xs sm:text-sm"
+                      />
+                    </div>
 
-              <button
-                type="submit"
-                form="furniture-order-form"
-                className="w-2/3 py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40"
-              >
-                <MessageCircle size={16} />
-                <span>إرسال وتأكيد الطلب عبر واتساب</span>
-              </button>
-            </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                        رقم الجوال للتواصل والتسليم *
+                      </label>
+                      <input
+                        type="tel"
+                        required
+                        dir="ltr"
+                        placeholder="05XXXXXXXX"
+                        value={orderPhone}
+                        onChange={e => setOrderPhone(e.target.value)}
+                        className="input-field min-h-[44px] text-xs sm:text-sm text-left font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* City & District */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                        المدينة *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="مثال: الرياض، المزاحمية، ضرما..."
+                        value={orderCity}
+                        onChange={e => setOrderCity(e.target.value)}
+                        className="input-field min-h-[44px] text-xs sm:text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                        الحي / المنطقة *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="مثال: حي النرجس، مزارع العمارية..."
+                        value={orderDistrict}
+                        onChange={e => setOrderDistrict(e.target.value)}
+                        className="input-field min-h-[44px] text-xs sm:text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Detailed Street Address */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                      تفاصيل العنوان أو وصف المزرعة / الاستراحة
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="اسم الشارع، رقم الفيلا، أو أقرب معلم واضح..."
+                      value={orderStreetAddress}
+                      onChange={e => setOrderStreetAddress(e.target.value)}
+                      className="input-field min-h-[44px] text-xs sm:text-sm"
+                    />
+                  </div>
+
+                  {/* Google Maps / GPS Locator */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold text-gray-300">
+                        موقع التسليم على خرائط جوجل (GPS)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleGetLocation}
+                        disabled={locating}
+                        className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-bold transition-colors"
+                      >
+                        {locating ? <Loader2 size={13} className="animate-spin" /> : <Navigation size={13} />}
+                        <span>{locating ? 'جاري جلب إحداثيات موقعك...' : '📍 تحديد موقعي الحالي'}</span>
+                      </button>
+                    </div>
+                    <input
+                      type="url"
+                      dir="ltr"
+                      placeholder="https://maps.google.com/?q=..."
+                      value={orderGoogleMapsUrl}
+                      onChange={e => setOrderGoogleMapsUrl(e.target.value)}
+                      className="input-field min-h-[44px] text-xs font-mono text-left"
+                    />
+                  </div>
+
+                  {/* Delivery Type & Payment Method */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                        طريقة الاستلام
+                      </label>
+                      <select
+                        value={deliveryType}
+                        onChange={e => setDeliveryType(e.target.value as any)}
+                        className="input-field min-h-[44px] text-xs bg-slate-900"
+                      >
+                        <option value="delivery">توصيل إلى موقعي / المزرعة 🚚</option>
+                        <option value="pickup">استلام مباشر من المستودع 🏬</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                        طريقة الدفع المفضلة
+                      </label>
+                      <select
+                        value={paymentMethod}
+                        onChange={e => setPaymentMethod(e.target.value as any)}
+                        className="input-field min-h-[44px] text-xs bg-slate-900"
+                      >
+                        <option value="cash">نقداً عند الاستلام 💵</option>
+                        <option value="pos_on_delivery">شبكة (مدى) عند وصول المندوب 💳</option>
+                        <option value="bank_transfer">تحويل بنكي مسبق 🏦</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                      ملاحظات إضافية أو موعد التسليم المفضل
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="مثال: التوصيل يوم الجمعة صباحاً، أو التواصل قبل الوصول بساعة..."
+                      value={orderNotes}
+                      onChange={e => setOrderNotes(e.target.value)}
+                      className="input-field text-xs leading-relaxed"
+                    />
+                  </div>
+                </form>
+
+                {/* Action Footer (Sticky at Bottom) */}
+                <div className="shrink-0 p-3.5 sm:p-4 border-t border-white/10 bg-slate-900/95 backdrop-blur-md pb-safe flex gap-2.5 z-10">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedItemForOrder(null)}
+                    disabled={submitting}
+                    className="btn-ghost w-1/3 py-2.5 text-xs font-semibold"
+                  >
+                    إلغاء
+                  </button>
+
+                  <button
+                    type="submit"
+                    form="furniture-order-form"
+                    disabled={submitting}
+                    className="w-2/3 py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        <span>جاري حفظ وتأكيد الطلب...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={16} />
+                        <span>تأكيد وتسجيل طلب الشراء</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

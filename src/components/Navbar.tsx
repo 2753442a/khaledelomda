@@ -51,25 +51,33 @@ const Navbar: React.FC = () => {
     <>
       <nav className="fixed top-0 inset-x-0 z-50 glass-strong border-b border-white/8">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 group">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-green-600 to-emerald-500 flex items-center justify-center shadow-lg">
-              <span className="text-white text-lg">🌴</span>
+          {/* Logo & Live Status */}
+          <div className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-2 group">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-green-600 to-emerald-500 flex items-center justify-center shadow-lg">
+                <span className="text-white text-lg">🌴</span>
+              </div>
+              <div>
+                <p className="text-sm font-bold text-white leading-tight">منتجع خالد العمدة</p>
+                <p className="text-[11px] text-emerald-400 leading-tight">للاستثمار</p>
+              </div>
+            </Link>
+
+            {/* Live Service Availability Badge (Desktop) */}
+            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/40 border border-emerald-500/30 text-[11px] font-bold text-emerald-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>متاح: حجز المنتجع • وايت ماء • توصيل الأثاث</span>
             </div>
-            <div className="hidden sm:block">
-              <p className="text-sm font-bold text-white leading-tight">منتجع خالد العمدة</p>
-              <p className="text-xs text-emerald-400 leading-tight">للاستثمار</p>
-            </div>
-          </Link>
+          </div>
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-1">
             <NavLink to="/" label="الرئيسية" icon={<Home size={15} />} active={isActive('/')} />
             <NavLink to="/book" label="احجز الآن" icon={<CalendarCheck size={15} />} active={isActive('/book')} />
-            <NavLink to="/furniture" label="كراسي تراثية 🪑" icon={<Armchair size={15} className="text-amber-400" />} active={isActive('/furniture')} />
+            <NavLink to="/furniture" label="كراسي وأثاث تراثي 🪑" icon={<Armchair size={15} className="text-amber-400" />} active={isActive('/furniture')} />
             <NavLink to="/water" label="وايت ماء حلو 💧" icon={<Droplets size={15} className="text-teal-400" />} active={isActive('/water')} />
             {user && (
-              <NavLink to="/my-bookings" label="حجوزاتي" icon={<CalendarCheck size={15} />} active={isActive('/my-bookings')} />
+              <NavLink to="/my-bookings" label="حجوزاتي وطلباتي" icon={<CalendarCheck size={15} />} active={isActive('/my-bookings')} />
             )}
             {isAdmin && (
               <NavLink to="/admin" label="لوحة التحكم" icon={<Shield size={15} />} active={isActive('/admin')} />
@@ -77,7 +85,15 @@ const Navbar: React.FC = () => {
           </div>
 
           {/* Right Section */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {/* Quick Call Action (Desktop) */}
+            <a
+              href="tel:0543034553"
+              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass border border-emerald-500/30 text-xs font-bold text-emerald-300 hover:text-white hover:bg-emerald-500/20 transition-all"
+              title="اتصال مباشر بالمالك"
+            >
+              <span>📞 اتصل بالمالك</span>
+            </a>
             {user ? (
               <div className="relative" ref={dropdownRef}>
                 <button
@@ -131,7 +147,7 @@ const Navbar: React.FC = () => {
                         onClick={() => setDropdownOpen(false)}
                       >
                         <CalendarCheck size={17} className="text-emerald-400" />
-                        حجوزاتي
+                        حجوزاتي وطلباتي
                       </Link>
                       {isAdmin && (
                         <Link
@@ -209,7 +225,7 @@ const Navbar: React.FC = () => {
               <MobileNavLink to="/book" label="احجز الآن" icon={<CalendarCheck size={17} />} onClick={() => setMenuOpen(false)} active={isActive('/book')} />
               <MobileNavLink to="/furniture" label="كراسي وأثاث تراثي 🪑" icon={<Armchair size={17} className="text-amber-400" />} onClick={() => setMenuOpen(false)} active={isActive('/furniture')} />
               <MobileNavLink to="/water" label="وايت ماء حلو 💧" icon={<Droplets size={17} className="text-teal-400" />} onClick={() => setMenuOpen(false)} active={isActive('/water')} />
-              {user && <MobileNavLink to="/my-bookings" label="حجوزاتي" icon={<CalendarCheck size={17} />} onClick={() => setMenuOpen(false)} active={isActive('/my-bookings')} />}
+              {user && <MobileNavLink to="/my-bookings" label="حجوزاتي وطلباتي" icon={<CalendarCheck size={17} />} onClick={() => setMenuOpen(false)} active={isActive('/my-bookings')} />}
               {isAdmin && (
                 <MobileNavLink to="/admin" label="لوحة التحكم" icon={<Shield size={17} className="text-amber-400" />} onClick={() => setMenuOpen(false)} active={isActive('/admin')} />
               )}

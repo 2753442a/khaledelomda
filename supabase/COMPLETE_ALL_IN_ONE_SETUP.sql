@@ -482,7 +482,29 @@ select
 where not exists (select 1 from public.heritage_furniture where name like '%طقم كراسي خيزران%');
 
 -- ─────────────────────────────────────────────────────────────
--- 10. فهارس تحسين الأداء ومنع التعارض (Indexes)
+-- 10. جدول وإدارة طلبات مشتريات الأثاث التراثي (furniture_orders)
+-- ─────────────────────────────────────────────────────────────
+create table if not exists public.furniture_orders (
+  id uuid primary key default gen_random_uuid(),
+  order_number text not null unique,
+  customer_id uuid references public.profiles(id) on delete set null,
+  customer_name text not null,
+  customer_phone text not null,
+  items jsonb not null default '[]'::jsonb,
+  total_amount numeric not null check (total_amount >= 0),
+  city text not null default 'الرياض',
+  district text not null,
+  street_address text,
+  google_maps_url text,
+  delivery_type text not null default 'delivery' check (delivery_type in ('delivery', 'pickup')),
+  payment_method text not null default 'cash' check (payment_method in ('cash', 'pos_on_delivery', 'bank_transfer')),
+  status text not null default 'new' check (status in ('new', 'confirmed', 'shipping', 'delivered', 'cancelled')),
+  notes text,
+  created_at timestamptz default now()
+);
+
+-- ─────────────────────────────────────────────────────────────
+-- 11. فهارس تحسين الأداء ومنع التعارض (Indexes)
 -- ─────────────────────────────────────────────────────────────
 create index if not exists idx_bookings_date on public.bookings(booking_date);
 create index if not exists idx_bookings_status on public.bookings(status);
@@ -652,6 +674,20 @@ create policy "Public read active heritage furniture" on public.heritage_furnitu
 drop policy if exists "Admin manage heritage furniture" on public.heritage_furniture;
 create policy "Admin manage heritage furniture" on public.heritage_furniture for all using (public.is_admin());
 
+-- furniture_orders
+drop policy if exists "Anyone can insert furniture orders" on public.furniture_orders;
+create policy "Anyone can insert furniture orders" on public.furniture_orders for insert with check (true);
+
+drop policy if exists "Customers read own furniture orders" on public.furniture_orders;
+create policy "Customers read own furniture orders" on public.furniture_orders for select using (
+  (auth.uid() is not null and customer_id = auth.uid())
+  or customer_phone in (select phone from public.profiles where id = auth.uid())
+  or public.is_admin()
+);
+
+drop policy if exists "Admin manage furniture orders" on public.furniture_orders;
+create policy "Admin manage furniture orders" on public.furniture_orders for all using (public.is_admin());
+
 -- ─────────────────────────────────────────────────────────────
 -- 13. تفعيل التحديث اللحظي (Supabase Realtime) بأمان
 -- ─────────────────────────────────────────────────────────────
@@ -675,6 +711,10 @@ begin
   end;
   begin
     alter publication supabase_realtime add table public.heritage_furniture;
+  exception when others then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.furniture_orders;
   exception when others then null;
   end;
 end $$;

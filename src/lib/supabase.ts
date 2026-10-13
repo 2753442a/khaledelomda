@@ -323,6 +323,62 @@ export type Database = {
           created_at?: string
         }
       }
+      furniture_orders: {
+        Row: {
+          id: string
+          order_number: string
+          customer_id: string | null
+          customer_name: string
+          customer_phone: string
+          items: any
+          total_amount: number
+          city: string
+          district: string
+          street_address: string | null
+          google_maps_url: string | null
+          delivery_type: 'delivery' | 'pickup'
+          payment_method: 'cash' | 'pos_on_delivery' | 'bank_transfer'
+          status: 'new' | 'confirmed' | 'shipping' | 'delivered' | 'cancelled'
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          order_number: string
+          customer_id?: string | null
+          customer_name: string
+          customer_phone: string
+          items: any
+          total_amount: number
+          city?: string
+          district: string
+          street_address?: string | null
+          google_maps_url?: string | null
+          delivery_type?: 'delivery' | 'pickup'
+          payment_method?: 'cash' | 'pos_on_delivery' | 'bank_transfer'
+          status?: 'new' | 'confirmed' | 'shipping' | 'delivered' | 'cancelled'
+          notes?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          order_number?: string
+          customer_id?: string | null
+          customer_name?: string
+          customer_phone?: string
+          items?: any
+          total_amount?: number
+          city?: string
+          district?: string
+          street_address?: string | null
+          google_maps_url?: string | null
+          delivery_type?: 'delivery' | 'pickup'
+          payment_method?: 'cash' | 'pos_on_delivery' | 'bank_transfer'
+          status?: 'new' | 'confirmed' | 'shipping' | 'delivered' | 'cancelled'
+          notes?: string | null
+          created_at?: string
+        }
+      }
     }
   }
 }
@@ -341,5 +397,32 @@ export interface HeritageFurniture {
   stock_quantity?: number
   display_order?: number
   is_active?: boolean
+  created_at?: string
+}
+
+export interface FurnitureOrderItem {
+  item_id: string
+  name: string
+  price: number
+  quantity: number
+  image_url: string
+}
+
+export interface FurnitureOrder {
+  id: string
+  order_number: string
+  customer_id?: string | null
+  customer_name: string
+  customer_phone: string
+  items: FurnitureOrderItem[]
+  total_amount: number
+  city: string
+  district: string
+  street_address?: string | null
+  google_maps_url?: string | null
+  delivery_type: 'delivery' | 'pickup'
+  payment_method: 'cash' | 'pos_on_delivery' | 'bank_transfer'
+  status: 'new' | 'confirmed' | 'shipping' | 'delivered' | 'cancelled'
+  notes?: string | null
   created_at?: string
 }

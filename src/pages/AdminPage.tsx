@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, FurnitureOrder } from '../lib/supabase'
 import { useAuth, isAdminPhone } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { useNavigate } from 'react-router-dom'
@@ -15,7 +15,7 @@ import {
   CheckCircle2, XCircle, Banknote, Eye, EyeOff, Info, Phone, Calendar,
   CreditCard, Search, Filter, AlertCircle, FileText, CheckCircle,
   Droplets, Navigation, MapPin, Truck, ExternalLink, Palmtree, Sparkles, Image as ImageIcon,
-  Fuel, Wrench, TrendingUp, TrendingDown, Send, CalendarDays, Receipt, Armchair
+  Fuel, Wrench, TrendingUp, TrendingDown, Send, CalendarDays, Receipt, Armchair, ShoppingBag
 } from 'lucide-react'
 import { Facility } from '../components/Facilities'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -27,6 +27,7 @@ import WebsiteCmsTab from '../components/admin/WebsiteCmsTab'
 import MediaLibraryTab from '../components/admin/MediaLibraryTab'
 import ManualBookingModal from '../components/admin/ManualBookingModal'
 import HeritageFurnitureAdminTab from '../components/admin/HeritageFurnitureAdminTab'
+import FurnitureOrdersAdminTab from '../components/admin/FurnitureOrdersAdminTab'
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -4507,7 +4508,7 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
 // ─────────────────────────────────────────────
 // MAIN ADMIN PAGE
 // ─────────────────────────────────────────────
-type Tab = 'overview' | 'cms' | 'media' | 'facilities' | 'furniture' | 'bookings' | 'pending' | 'properties' | 'addons' | 'water' | 'ledger' | 'settings'
+type Tab = 'overview' | 'cms' | 'media' | 'facilities' | 'furniture_orders' | 'furniture' | 'bookings' | 'pending' | 'properties' | 'addons' | 'water' | 'ledger' | 'settings'
 
 const AdminPage: React.FC = () => {
   const { profile, user, loading: authLoading } = useAuth()
@@ -4522,6 +4523,7 @@ const AdminPage: React.FC = () => {
   const [showManualBookingModal, setShowManualBookingModal] = useState(false)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [waterOrders, setWaterOrders] = useState<WaterOrder[]>([])
+  const [furnitureOrders, setFurnitureOrders] = useState<FurnitureOrder[]>([])
   const [waterSizes, setWaterSizes] = useState<WaterTankerSize[]>([])
   const [facilities, setFacilities] = useState<Facility[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -4560,7 +4562,7 @@ const AdminPage: React.FC = () => {
   const fetchAll = useCallback(async () => {
     if (!user || !isAdmin) return
     setLoading(true)
-    const [{ data: b }, { data: s }, { data: p }, { data: a }, { data: wo }, { data: ws }, { data: fac }] = await Promise.all([
+    const [{ data: b }, { data: s }, { data: p }, { data: a }, { data: wo }, { data: ws }, { data: fac }, { data: fo }] = await Promise.all([
       supabase
         .from('bookings')
         .select('*, properties(name), booking_addons(*, addons(*))')
@@ -4571,6 +4573,7 @@ const AdminPage: React.FC = () => {
       supabase.from('water_orders').select('*').order('created_at', { ascending: false }),
       supabase.from('water_tanker_sizes').select('*').order('display_order', { ascending: true }),
       supabase.from('resort_facilities').select('*').order('display_order', { ascending: true }),
+      supabase.from('furniture_orders').select('*').order('created_at', { ascending: false }),
     ])
     if (b) setBookings(b as any)
     if (s) setSettings(s)
@@ -4579,6 +4582,7 @@ const AdminPage: React.FC = () => {
     if (wo) setWaterOrders(wo as any)
     setWaterSizes((ws as any) || [])
     setFacilities((fac as any) || [])
+    setFurnitureOrders((fo as any) || [])
     setLoading(false)
   }, [user, isAdmin])
 
@@ -4646,6 +4650,14 @@ const AdminPage: React.FC = () => {
           playNotificationSound()
           showToast('💧 طلب وايت ماء جديد وصل للتو!', 'success')
           sendDesktopNotification('خدمة وايت ماء حلو', '💧 وصل طلب وايت ماء جديد للتو.')
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'furniture_orders' }, (payload) => {
+        fetchAll()
+        if (payload.eventType === 'INSERT') {
+          playNotificationSound()
+          showToast('📦 طلب أثاث تراثي جديد وصل للتو!', 'success')
+          sendDesktopNotification('كراسي وأثاث خالد العمدة', '📦 وصل طلب شراء أثاث جديد للتو.')
         }
       })
       .subscribe()
@@ -4799,6 +4811,10 @@ const AdminPage: React.FC = () => {
     return waterOrders.filter(o => o.status === 'new').length
   }, [waterOrders])
 
+  const newFurnitureOrdersCount = useMemo(() => {
+    return furnitureOrders.filter(o => o.status === 'new').length
+  }, [furnitureOrders])
+
   // ─── CONDITIONAL RENDERS ONLY AFTER ALL HOOKS HAVE BEEN EXECUTED ───
   // Show loading while checking auth
   if (authLoading) {
@@ -4843,8 +4859,9 @@ const AdminPage: React.FC = () => {
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview', label: 'نظرة عامة', icon: <BarChart3 size={16} /> },
+    { id: 'furniture_orders', label: 'طلبات أثاث التراث 📦', icon: <ShoppingBag size={16} className="text-amber-400" />, badge: newFurnitureOrdersCount },
+    { id: 'furniture', label: 'كتالوج الأثاث 🪑', icon: <Armchair size={16} className="text-amber-400" /> },
     { id: 'facilities', label: 'أقسام ومرافق المنتجع 🏡', icon: <Sparkles size={16} className="text-amber-400" /> },
-    { id: 'furniture', label: 'كراسي وأثاث تراثي 🪑', icon: <Armchair size={16} className="text-amber-400" /> },
     { id: 'cms', label: 'واجهة الموقع والصور 🖼️', icon: <ImageIcon size={16} className="text-emerald-400" /> },
     { id: 'media', label: 'مكتبة الوسائط 📂', icon: <Palmtree size={16} className="text-teal-400" /> },
     { id: 'bookings', label: 'جميع الحجوزات', icon: <CalendarCheck size={16} /> },
@@ -5338,6 +5355,14 @@ const AdminPage: React.FC = () => {
         {activeTab === 'facilities' && (
           <FacilitiesAdminTab
             facilities={facilities}
+            onRefresh={fetchAll}
+            showToast={showToast}
+          />
+        )}
+
+        {activeTab === 'furniture_orders' && (
+          <FurnitureOrdersAdminTab
+            orders={furnitureOrders}
             onRefresh={fetchAll}
             showToast={showToast}
           />
