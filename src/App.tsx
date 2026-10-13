@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { SettingsProvider } from './contexts/SettingsContext'
 import Navbar from './components/Navbar'
+import FloatingContactHelp from './components/FloatingContactHelp'
 import ErrorBoundary from './components/ErrorBoundary'
 import HomePage from './pages/HomePage'
 
@@ -43,6 +44,7 @@ const App: React.FC = () => {
                 </Suspense>
               </ErrorBoundary>
             </main>
+            <FloatingContactHelp />
           </div>
         </BrowserRouter>
       </SettingsProvider>

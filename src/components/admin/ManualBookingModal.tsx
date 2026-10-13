@@ -124,30 +124,33 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in text-right">
-      <div className="card glass-strong max-w-xl w-full max-h-[92vh] overflow-y-auto custom-scrollbar p-6 border border-emerald-500/30 shadow-2xl space-y-5 animate-scale-in">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-white/10">
-          <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
-              <CalendarCheck size={20} />
-            </span>
-            <div>
-              <h3 className="font-bold text-white text-base">تسجيل حجز مباشر من الإدارة</h3>
-              <p className="text-[11px] text-gray-400">للحجوزات الواردة بالهاتف أو المكتب لحجز وتجميد التاريخ فوراً</p>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in text-right">
+      <div className="w-full sm:max-w-xl bg-slate-900 border-t sm:border border-emerald-500/30 shadow-2xl rounded-t-[28px] sm:rounded-2xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col overflow-hidden animate-scale-in">
+        {/* Header (Sticky at Top) */}
+        <div className="shrink-0 p-4 sm:p-5 border-b border-white/10 bg-slate-900/95 backdrop-blur-md z-10">
+          <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-3 sm:hidden" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
+                <CalendarCheck size={20} />
+              </span>
+              <div>
+                <h3 className="font-bold text-white text-base">تسجيل حجز مباشر من الإدارة</h3>
+                <p className="text-[11px] text-gray-400">حجز وتجميد التاريخ فوراً للعميل</p>
+              </div>
             </div>
-          </div>
 
-          <button
-            onClick={onClose}
-            className="glass p-1.5 rounded-lg text-gray-400 hover:text-white"
-          >
-            <X size={16} />
-          </button>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-full glass flex items-center justify-center text-gray-400 hover:text-white"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Scrollable Form Body */}
+        <form id="manual-booking-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
           {/* Customer Name & Phone */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -296,34 +299,36 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-2.5 pt-3 border-t border-white/10">
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn-ghost w-1/3 py-2.5 text-xs font-medium"
-            >
-              إلغاء
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="btn-primary w-2/3 py-2.5 text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 size={15} className="animate-spin" />
-                  <span>جاري تسجيل الحجز...</span>
-                </>
-              ) : (
-                <>
-                  <CalendarCheck size={16} />
-                  <span>تأكيد وتسجيل الحجز في التقويم</span>
-                </>
-              )}
-            </button>
-          </div>
         </form>
+
+        {/* Action Footer (Sticky at Bottom) */}
+        <div className="shrink-0 p-3.5 sm:p-4 border-t border-white/10 bg-slate-900/95 backdrop-blur-md pb-safe flex gap-2.5 z-10">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-ghost w-1/3 py-2.5 text-xs font-medium"
+          >
+            إلغاء
+          </button>
+          <button
+            type="submit"
+            form="manual-booking-form"
+            disabled={submitting}
+            className="btn-primary w-2/3 py-2.5 text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30"
+          >
+            {submitting ? (
+              <>
+                <Loader2 size={15} className="animate-spin" />
+                <span>جاري تسجيل الحجز...</span>
+              </>
+            ) : (
+              <>
+                <CalendarCheck size={16} />
+                <span>تأكيد وتسجيل الحجز في التقويم</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -28,19 +28,27 @@
     background: var(--color-surface);
     color: var(--color-text);
     scroll-behavior: smooth;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
     min-height: 100vh;
+    min-height: 100dvh;
     background: var(--color-surface);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   #root {
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
+    overflow-x: hidden;
   }
 }
 
@@ -303,11 +311,70 @@
 
   /* Safe area padding for mobile / Capacitor */
   .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom, 1.5rem);
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 1.5rem));
   }
 
   .pt-safe {
-    padding-top: env(safe-area-inset-top, 1.5rem);
+    padding-top: max(1rem, env(safe-area-inset-top, 1.5rem));
+  }
+
+  .bottom-safe {
+    bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
+  }
+
+  /* Prevent automatic iOS Safari zoom on focus by ensuring font-size is at least 16px */
+  @media (max-width: 768px) {
+    .input-field,
+    input:not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Mobile Sheet Transitions */
+  .modal-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.82);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    animation: fadeIn 0.2s ease-out;
+  }
+  @media (min-width: 640px) {
+    .modal-sheet-backdrop {
+      align-items: center;
+      padding: 1rem;
+    }
+  }
+
+  .modal-sheet-panel {
+    width: 100%;
+    max-height: 92dvh;
+    display: flex;
+    flex-direction: column;
+    border-top-left-radius: 1.75rem;
+    border-top-right-radius: 1.75rem;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    overflow: hidden;
+    animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @media (min-width: 640px) {
+    .modal-sheet-panel {
+      max-height: 88vh;
+      border-radius: 1.5rem;
+      animation: scaleIn 0.2s ease-out;
+    }
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
   }
 
   /* Card */

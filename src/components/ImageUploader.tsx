@@ -77,9 +77,9 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   }
 
   const getPreviewHeight = () => {
-    if (aspectRatio === 'hero') return 'h-48 sm:h-56'
-    if (aspectRatio === 'square') return 'h-40 sm:h-48'
-    return 'h-40 sm:h-44'
+    if (aspectRatio === 'hero') return 'h-36 sm:h-52'
+    if (aspectRatio === 'square') return 'h-32 sm:h-44'
+    return 'h-32 sm:h-40'
   }
 
   return (
@@ -121,45 +121,45 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent pointer-events-none" />
 
             {/* Top Badges */}
-            <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
-              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-black/75 backdrop-blur-md text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shadow-md">
-                <Check size={12} className="text-emerald-400" />
-                <span>صورة معتمدة</span>
+            <div className="absolute top-2 right-2 flex items-center gap-1">
+              <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold bg-black/75 backdrop-blur-md text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shadow-md">
+                <Check size={11} className="text-emerald-400" />
+                <span>معتمدة</span>
               </span>
               {value.startsWith('data:') ? (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-teal-500/20 text-teal-300 border border-teal-500/30">
-                  ملف جهاز محلي
+                  ملف جهاز
                 </span>
               ) : (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                  رابط سحابي
+                  سحابي
                 </span>
               )}
             </div>
 
             {/* Action Buttons Overlay */}
-            <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between gap-2">
+            <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1.5">
               <button
                 type="button"
                 onClick={() => setShowZoomModal(true)}
-                className="glass py-1.5 px-3 rounded-xl text-xs text-white hover:bg-white/20 flex items-center gap-1.5 shadow-md"
+                className="glass py-1 px-2.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs text-white hover:bg-white/20 flex items-center gap-1 shadow-md"
               >
-                <Eye size={13} />
-                <span>عرض بالحجم الكامل</span>
+                <Eye size={12} />
+                <span>تكبير</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="py-1.5 px-3 rounded-xl text-xs font-bold bg-emerald-500 text-slate-950 hover:bg-emerald-400 flex items-center gap-1.5 shadow-lg transition-all"
+                className="py-1 px-2.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold bg-emerald-500 text-slate-950 hover:bg-emerald-400 flex items-center gap-1 shadow-lg transition-all"
               >
                 {uploading ? (
-                  <Loader2 size={13} className="animate-spin" />
+                  <Loader2 size={12} className="animate-spin" />
                 ) : (
-                  <RefreshCw size={13} />
+                  <RefreshCw size={12} />
                 )}
-                <span>تغيير من الجهاز</span>
+                <span>تغيير</span>
               </button>
             </div>
           </div>
@@ -168,51 +168,51 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
       {/* Compression & Status Notice */}
       {compressInfo && (
-        <div className="p-2.5 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-fade-in">
-          <Check size={14} className="shrink-0 text-emerald-400" />
-          <span>{compressInfo}</span>
+        <div className="p-2 sm:p-2.5 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-emerald-300 text-[11px] sm:text-xs flex items-center gap-1.5 animate-fade-in">
+          <Check size={13} className="shrink-0 text-emerald-400" />
+          <span className="truncate">{compressInfo}</span>
         </div>
       )}
 
       {/* Tabs Selector: Device Upload vs Preset Gallery vs Direct URL */}
-      <div className="bg-slate-900/80 p-1 rounded-2xl border border-white/10 flex items-center gap-1">
+      <div className="bg-slate-900/90 p-1 rounded-2xl border border-white/10 flex items-center gap-1">
         <button
           type="button"
           onClick={() => setActiveTab('device')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-1.5 sm:py-2 px-1 sm:px-3 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 ${
             activeTab === 'device'
               ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
               : 'text-gray-400 hover:text-white'
           }`}
         >
-          <Upload size={14} />
-          <span>من الجهاز 📱💻</span>
+          <Upload size={13} className="shrink-0" />
+          <span className="truncate">من الجهاز</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('presets')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-1.5 sm:py-2 px-1 sm:px-3 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 ${
             activeTab === 'presets'
               ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
               : 'text-gray-400 hover:text-white'
           }`}
         >
-          <Sparkles size={14} />
-          <span>مكتبة المنتجع 🌴</span>
+          <Sparkles size={13} className="shrink-0" />
+          <span className="truncate">المكتبة</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('url')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-1.5 sm:py-2 px-1 sm:px-3 rounded-xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center gap-1 ${
             activeTab === 'url'
               ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
               : 'text-gray-400 hover:text-white'
           }`}
         >
-          <LinkIcon size={14} />
-          <span>رابط مباشر 🔗</span>
+          <LinkIcon size={13} className="shrink-0" />
+          <span className="truncate">رابط مباشر</span>
         </button>
       </div>
 

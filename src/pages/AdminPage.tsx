@@ -4275,28 +4275,32 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
       </div>
       )}
 
-      {/* Edit / Create Facility Modal */}
+      {/* Edit / Create Facility Modal — Mobile-First Bottom Sheet */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-          <div className="card glass-strong max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar p-6 border border-white/15 shadow-2xl">
-            <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
-                  <Palmtree size={18} />
-                </span>
-                <h3 className="font-bold text-white text-base">
-                  {editingFacility ? 'تعديل بيانات المرفق' : 'إضافة مرفق جديد إلى المنتجع'}
-                </h3>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="w-full sm:max-w-2xl bg-slate-900 border-t sm:border border-white/15 shadow-2xl rounded-t-[28px] sm:rounded-2xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col overflow-hidden text-right animate-scale-in">
+            {/* Header (Sticky at Top) */}
+            <div className="shrink-0 p-4 sm:p-5 border-b border-white/10 bg-slate-900/95 backdrop-blur-md z-10">
+              <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-3 sm:hidden" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
+                    <Palmtree size={18} />
+                  </span>
+                  <h3 className="font-bold text-white text-base">
+                    {editingFacility ? 'تعديل بيانات المرفق' : 'إضافة مرفق جديد إلى المنتجع'}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="w-8 h-8 rounded-full glass flex items-center justify-center text-gray-400 hover:text-white"
+                >
+                  <X size={16} />
+                </button>
               </div>
-              <button
-                onClick={() => setShowModal(false)}
-                className="glass p-2 rounded-xl text-gray-400 hover:text-white"
-              >
-                <X size={16} />
-              </button>
             </div>
 
-            <form onSubmit={handleSave} className="space-y-4 text-right">
+            <form id="facility-edit-form" onSubmit={handleSave} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar text-right">
               {/* Title & Subtitle */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -4466,31 +4470,33 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
                 </label>
               </div>
 
-              {/* Form Buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="glass py-2.5 px-5 text-xs text-gray-300 hover:text-white rounded-xl"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="btn-primary py-2.5 px-6 text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-900/30"
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 size={15} className="animate-spin" />
-                      <span>جاري الحفظ...</span>
-                    </>
-                  ) : (
-                    <span>{editingFacility ? 'حفظ التعديلات' : 'نشر المرفق الآن'}</span>
-                  )}
-                </button>
-              </div>
             </form>
+
+            {/* Action Footer (Sticky at Bottom) */}
+            <div className="shrink-0 p-3.5 sm:p-4 border-t border-white/10 bg-slate-900/95 backdrop-blur-md pb-safe flex items-center justify-end gap-2.5 z-10">
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="btn-ghost flex-1 sm:flex-none py-2.5 px-5 text-xs text-gray-300 hover:text-white rounded-xl"
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                form="facility-edit-form"
+                disabled={saving}
+                className="btn-primary flex-1 sm:flex-none py-2.5 px-6 text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" />
+                    <span>جاري الحفظ...</span>
+                  </>
+                ) : (
+                  <span>{editingFacility ? 'حفظ التعديلات' : 'نشر المرفق الآن'}</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

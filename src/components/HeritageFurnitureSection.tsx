@@ -240,26 +240,30 @@ export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> =
         })}
       </div>
 
-      {/* Quick Order Modal */}
+      {/* Quick Order Modal — Mobile-First Bottom Sheet */}
       {selectedItemForOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in overflow-y-auto">
-          <div className="card glass-strong max-w-lg w-full p-6 sm:p-7 border border-amber-500/30 shadow-2xl space-y-5 animate-scale-in my-8 text-right">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
-                  <ShoppingBag size={18} />
-                </span>
-                <h3 className="font-bold text-white text-base sm:text-lg">
-                  طلب شراء: {selectedItemForOrder.name}
-                </h3>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in">
+          <div className="w-full sm:max-w-lg bg-slate-900 border-t sm:border border-amber-500/30 shadow-2xl rounded-t-[28px] sm:rounded-2xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col overflow-hidden text-right animate-scale-in">
+            {/* Header (Sticky at Top) */}
+            <div className="shrink-0 p-4 sm:p-5 border-b border-white/10 bg-slate-900/95 backdrop-blur-md z-10">
+              <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-3 sm:hidden" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                    <ShoppingBag size={18} />
+                  </span>
+                  <h3 className="font-bold text-white text-base sm:text-lg">
+                    طلب شراء: {selectedItemForOrder.name}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedItemForOrder(null)}
+                  className="w-8 h-8 rounded-full glass flex items-center justify-center text-gray-400 hover:text-white"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedItemForOrder(null)}
-                className="text-gray-400 hover:text-white text-sm"
-              >
-                ✕
-              </button>
             </div>
 
             {/* Summary Banner */}
@@ -280,7 +284,26 @@ export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> =
               </div>
             </div>
 
-            <form onSubmit={handleSubmitModalOrder} className="space-y-4">
+            {/* Scrollable Form Body */}
+            <form id="furniture-order-form" onSubmit={handleSubmitModalOrder} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
+              {/* Summary Banner */}
+              <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10">
+                <img
+                  src={selectedItemForOrder.image_url}
+                  alt={selectedItemForOrder.name}
+                  className="w-16 h-16 rounded-xl object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = '/images/heritage-chair.jpg'
+                  }}
+                />
+                <div className="space-y-1 flex-1">
+                  <p className="text-xs font-bold text-white">{selectedItemForOrder.name}</p>
+                  <p className="text-xs text-amber-300 font-black">
+                    سعر الحبة: {formatCurrency(selectedItemForOrder.discount_price || selectedItemForOrder.price)}
+                  </p>
+                </div>
+              </div>
+
               {/* Quantity */}
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1.5">
@@ -374,26 +397,27 @@ export const HeritageFurnitureSection: React.FC<HeritageFurnitureSectionProps> =
                   className="input-field text-xs leading-relaxed"
                 />
               </div>
-
-              {/* Submit Buttons */}
-              <div className="flex gap-2.5 pt-2 border-t border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setSelectedItemForOrder(null)}
-                  className="btn-ghost w-1/3 py-2.5 text-xs font-semibold"
-                >
-                  إلغاء
-                </button>
-
-                <button
-                  type="submit"
-                  className="w-2/3 py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40"
-                >
-                  <MessageCircle size={16} />
-                  <span>إرسال وتأكيد الطلب عبر واتساب</span>
-                </button>
-              </div>
             </form>
+
+            {/* Action Footer (Sticky at Bottom) */}
+            <div className="shrink-0 p-3.5 sm:p-4 border-t border-white/10 bg-slate-900/95 backdrop-blur-md pb-safe flex gap-2.5 z-10">
+              <button
+                type="button"
+                onClick={() => setSelectedItemForOrder(null)}
+                className="btn-ghost w-1/3 py-2.5 text-xs font-semibold"
+              >
+                إلغاء
+              </button>
+
+              <button
+                type="submit"
+                form="furniture-order-form"
+                className="w-2/3 py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40"
+              >
+                <MessageCircle size={16} />
+                <span>إرسال وتأكيد الطلب عبر واتساب</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
