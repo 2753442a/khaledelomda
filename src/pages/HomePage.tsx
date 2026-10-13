@@ -1,10 +1,11 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-import { Phone, MessageCircle, MapPin, CalendarCheck, Sparkles, Clock, ShieldCheck } from 'lucide-react'
+import { Phone, MessageCircle, MapPin, CalendarCheck, Sparkles, Clock, ShieldCheck, Armchair } from 'lucide-react'
 import { Hero } from '../components/Hero'
 import { Facilities } from '../components/Facilities'
+import HeritageFurnitureSection from '../components/HeritageFurnitureSection'
 import { generateWhatsAppLink } from '../lib/utils'
-
+import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 
 const ContactSection: React.FC = () => {
@@ -145,11 +146,13 @@ const WaterServiceBanner: React.FC = () => {
 
 const HomePage: React.FC = () => {
   const { settings } = useSettings()
+  const { isAdmin } = useAuth()
 
   return (
     <main className="min-h-screen bg-[#0d1117] text-white selection:bg-emerald-500 selection:text-white">
       <Hero />
       <Facilities />
+      <HeritageFurnitureSection />
       <WaterServiceBanner />
       <ContactSection />
 
@@ -160,11 +163,17 @@ const HomePage: React.FC = () => {
           <span>•</span>
           <Link to="/book" className="hover:text-emerald-400 transition-colors">احجز الآن</Link>
           <span>•</span>
+          <Link to="/furniture" className="hover:text-amber-400 transition-colors">كراسي وأثاث تراثي 🪑</Link>
+          <span>•</span>
           <Link to="/water" className="hover:text-emerald-400 transition-colors">وايت ماء حلو</Link>
           <span>•</span>
           <Link to="/my-bookings" className="hover:text-emerald-400 transition-colors">حجوزاتي</Link>
-          <span>•</span>
-          <Link to="/admin" className="hover:text-emerald-400 transition-colors">لوحة الإدارة</Link>
+          {isAdmin && (
+            <>
+              <span>•</span>
+              <Link to="/admin" className="hover:text-emerald-400 transition-colors">لوحة الإدارة</Link>
+            </>
+          )}
         </div>
         <p className="text-gray-500">
           © {new Date().getFullYear()} {settings.resort_name} — واحة الفخامة والاستجمام الطبيعي

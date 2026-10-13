@@ -43,13 +43,20 @@ const DEFAULT_CENTER: [number, number] = [24.7136, 46.6753]
 const DEFAULT_ZOOM = 6
 const LOCATED_ZOOM = 16
 
-// Reverse geocoding via free Nominatim OSM API
+// Reverse geocoding via OSM Nominatim API with 4s timeout protection
 async function reverseGeocode(lat: number, lng: number): Promise<{ district: string; street: string }> {
   try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 4000)
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=ar&zoom=18&addressdetails=1`,
-      { headers: { 'User-Agent': 'KhalidResortWaterApp/1.0' } }
+      {
+        headers: { 'User-Agent': 'KhalidResortWaterApp/1.0' },
+        signal: controller.signal,
+      }
     )
+    clearTimeout(timeoutId)
+    if (!res.ok) return { district: '', street: '' }
     const data = await res.json()
     const addr = data.address || {}
     

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useSettings } from '../contexts/SettingsContext'
+import { generateWhatsAppLink } from '../lib/utils'
 import { X, Phone, Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react'
 
 interface AuthModalProps {
@@ -9,6 +11,7 @@ interface AuthModalProps {
 
 const AuthModal: React.FC<AuthModalProps> = ({ open, onClose }) => {
   const { signIn, signUp } = useAuth()
+  const { settings } = useSettings()
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
@@ -143,6 +146,23 @@ const AuthModal: React.FC<AuthModalProps> = ({ open, onClose }) => {
                   {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              {mode === 'login' && (
+                <div className="flex justify-between items-center mt-2 px-1">
+                  <span className="text-[11px] text-gray-500">استعادة فورية عبر خدمة العملاء</span>
+                  <a
+                    href={generateWhatsAppLink(
+                      settings.contact_whatsapp || '0547382222',
+                      `السلام عليكم ورحمة الله، أرجو المساعدة في استعادة كلمة المرور لحسابي بالمنتجع المسجل برقم الجوال: ${phone || '(سأزودكم بالرقم)'}`
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1"
+                    title="تتم استعادة الحسابات وأرقام المرور فوراً بالتواصل مع إدارة المنتجع عبر الواتساب"
+                  >
+                    <span>نسيت كلمة المرور؟</span>
+                  </a>
+                </div>
+              )}
             </div>
 
             {error && (

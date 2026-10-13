@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useSettings } from '../contexts/SettingsContext'
 import { supabase } from '../lib/supabase'
 import {
   formatArabicDate, formatCurrency, formatTime,
   generateWhatsAppLink, STATUS_LABELS, STATUS_CLASSES
 } from '../lib/utils'
-import { MessageCircle, AlertTriangle, X, Loader2, RefreshCw, Clock, CheckCircle2 } from 'lucide-react'
+import {
+  MessageCircle, AlertTriangle, X, Loader2, RefreshCw, Clock,
+  CheckCircle2, Droplets, CalendarCheck, MapPin, Truck, ChevronRight
+} from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 
 interface Booking {
@@ -27,11 +31,39 @@ interface Booking {
   properties?: { name: string }
 }
 
+interface WaterOrder {
+  id: string
+  customer_id: string | null
+  customer_name: string
+  customer_phone: string
+  tanker_size_name: string
+  tanker_price: number
+  district: string
+  street_address: string | null
+  google_maps_url: string | null
+  tank_type: string
+  payment_method: string
+  status: 'new' | 'dispatched' | 'delivered' | 'cancelled'
+  notes: string | null
+  created_at: string
+}
+
+const WATER_STATUS_CONFIG: Record<string, { label: string; badgeClass: string }> = {
+  new: { label: 'طلب جديد ⏳', badgeClass: 'bg-amber-500/15 text-amber-300 border border-amber-500/30' },
+  dispatched: { label: 'جاري التوصيل 🚚', badgeClass: 'bg-teal-500/15 text-teal-300 border border-teal-500/30' },
+  delivered: { label: 'تم التوصيل بنجاح ✅', badgeClass: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' },
+  cancelled: { label: 'ملغي ❌', badgeClass: 'bg-red-500/15 text-red-400 border border-red-500/30' },
+}
+
 const MyBookingsPage: React.FC = () => {
   const { user, profile, refreshProfile } = useAuth()
+  const { settings } = useSettings()
+
+  const [activeTab, setActiveTab] = useState<'bookings' | 'water'>('bookings')
   const [bookings, setBookings] = useState<Booking[]>([])
+  const [waterOrders, setWaterOrders] = useState<WaterOrder[]>([])
   const [loading, setLoading] = useState(true)
-  const [cancellingId, setCancellingId] = useState<string | null>(null)
+
   const [cancelModal, setCancelModal] = useState<Booking | null>(null)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelLoading, setCancelLoading] = useState(false)
@@ -47,53 +79,140 @@ const MyBookingsPage: React.FC = () => {
     }
   }, [cancelModal])
 
-  const fetchBookings = async () => {
+  const fetchBookings = useCallback(async () => {
     if (!user) return
+    try {
+      const cleanPhone = profile?.phone?.replace(/[^0-9]/g, '') || ''
+      const normalizedPhone = cleanPhone.startsWith('966') ? '0' + cleanPhone.slice(3) : cleanPhone
+
+      let query = supabase
+        .from('bookings')
+        .select('*, properties(name)')
+        .order('booking_date', { ascending: false })
+
+      if (normalizedPhone) {
+        query = query.or(`customer_id.eq.${user.id},customer_phone.eq.${normalizedPhone},customer_phone.eq.${cleanPhone}`)
+      } else {
+        query = query.eq('customer_id', user.id)
+      }
+
+      const { data } = await query
+      if (data) setBookings(data as any)
+    } catch (e) {
+      console.error('Error fetching bookings:', e)
+    }
+  }, [user, profile])
+
+  const fetchWaterOrders = useCallback(async () => {
+    if (!user) return
+    try {
+      const cleanPhone = profile?.phone?.replace(/[^0-9]/g, '') || ''
+      const normalizedPhone = cleanPhone.startsWith('966') ? '0' + cleanPhone.slice(3) : cleanPhone
+
+      let query = supabase
+        .from('water_orders')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (normalizedPhone) {
+        query = query.or(`customer_id.eq.${user.id},customer_phone.eq.${normalizedPhone},customer_phone.eq.${cleanPhone}`)
+      } else {
+        query = query.eq('customer_id', user.id)
+      }
+
+      const { data } = await query
+      if (data) setWaterOrders(data as any)
+    } catch (e) {
+      console.error('Error fetching water orders:', e)
+    }
+  }, [user, profile])
+
+  const refreshAll = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('bookings')
-      .select('*, properties(name)')
-      .eq('customer_id', user.id)
-      .order('booking_date', { ascending: false })
-    if (data) setBookings(data)
+    await Promise.all([fetchBookings(), fetchWaterOrders()])
     setLoading(false)
-  }
+  }, [fetchBookings, fetchWaterOrders])
 
   useEffect(() => {
-    fetchBookings()
-  }, [user])
+    if (user) {
+      refreshAll()
+    }
+  }, [user, refreshAll])
+
+  // Real-time synchronization
+  useEffect(() => {
+    if (!user) return
+    const channel = supabase
+      .channel(`user-sync-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+        fetchBookings()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'water_orders' }, () => {
+        fetchWaterOrders()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user, fetchBookings, fetchWaterOrders])
+
+  // Check if booking date is today or in the past
+  const isPastOrToday = (bookingDate: string) => {
+    try {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const bDate = new Date(bookingDate)
+      bDate.setHours(0, 0, 0, 0)
+      return bDate <= today
+    } catch {
+      return false
+    }
+  }
+
+  // Customers can directly cancel pending bookings only (before admin confirmation)
+  // Confirmed bookings require contacting administration to protect resort operations
+  const canDirectCancel = (b: Booking) => {
+    if (isPastOrToday(b.booking_date)) return false
+    return ['pending_receipt', 'pending_verification'].includes(b.status)
+  }
+
+  const isConfirmedBooking = (b: Booking) => b.status === 'confirmed' && !isPastOrToday(b.booking_date)
 
   const handleCancel = async () => {
     if (!cancelModal || !profile) return
+    // Guard against cancelling confirmed or past bookings directly
+    if (!canDirectCancel(cancelModal)) {
+      setCancelModal(null)
+      return
+    }
     setCancelLoading(true)
 
     const { error } = await supabase
       .from('bookings')
       .update({
         status: 'cancelled',
-        cancellation_reason: cancelReason || 'ألغى العميل الحجز',
+        cancellation_reason: cancelReason || 'ألغى العميل الحجز المعلق',
         cancelled_at: new Date().toISOString(),
       })
       .eq('id', cancelModal.id)
-      .eq('customer_id', user!.id)
 
     if (!error) {
-      // Increment cancellation count
       const newCount = (profile.cancellation_count ?? 0) + 1
       const updates: any = { cancellation_count: newCount }
       if (newCount >= 2) updates.is_flagged = true
 
-      await supabase.from('profiles').update(updates).eq('id', user!.id)
-      await refreshProfile()
+      try {
+        await supabase.from('profiles').update(updates).eq('id', user!.id)
+      } catch (_) {}
 
+      await refreshProfile()
       await fetchBookings()
       setCancelModal(null)
       setCancelReason('')
     }
     setCancelLoading(false)
   }
-
-  const canCancel = (b: Booking) => ['pending_receipt', 'pending_verification', 'confirmed'].includes(b.status)
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -107,24 +226,30 @@ const MyBookingsPage: React.FC = () => {
   if (!user) {
     return (
       <div className="min-h-screen pt-20 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-400 mb-4">يجب تسجيل الدخول لعرض حجوزاتك</p>
+        <div className="text-center card glass p-8 max-w-md mx-4">
+          <CalendarCheck size={40} className="text-emerald-400 mx-auto mb-3" />
+          <h2 className="text-xl font-bold text-white mb-2">عرض سجل الحجوزات والطلبات</h2>
+          <p className="text-gray-400 text-sm mb-4">يجب تسجيل الدخول برقم الجوال لعرض حجوزاتك ومتابعة طلباتك</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen pt-20 pb-12 px-4">
+    <div className="min-h-screen pt-20 pb-16 px-4">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-black text-white">حجوزاتي</h1>
-            <p className="text-sm text-gray-400 mt-0.5">سجل جميع حجوزاتك في المنتجع</p>
+            <h1 className="text-2xl font-black text-white">حجوزاتي وطلباتي</h1>
+            <p className="text-sm text-gray-400 mt-0.5">سجل جميع حجوزات المنتجع وطلبات وايت الماء الحلو</p>
           </div>
-          <button onClick={fetchBookings} className="glass p-2 rounded-xl hover:bg-white/10 transition-colors">
-            <RefreshCw size={16} />
+          <button
+            onClick={refreshAll}
+            className="glass p-2.5 rounded-xl hover:bg-white/10 transition-colors text-gray-300 hover:text-white"
+            title="تحديث البيانات"
+          >
+            <RefreshCw size={17} />
           </button>
         </div>
 
@@ -140,83 +265,208 @@ const MyBookingsPage: React.FC = () => {
             ) : profile.is_flagged ? (
               <><AlertTriangle size={16} /> تنبيه: سجل إلغاءات — يلزم الدفع الكامل بالتحويل البنكي</>
             ) : (
-              <><CheckCircle2 size={16} /> عميل مميز — شكراً لثقتك بنا</>
+              <><CheckCircle2 size={16} /> عميل مميز في {settings.resort_name} — شكراً لثقتك بنا</>
             )}
           </div>
         )}
+
+        {/* Tab Switcher */}
+        <div className="flex gap-2 p-1.5 rounded-2xl bg-white/5 border border-white/10 mb-6">
+          <button
+            onClick={() => setActiveTab('bookings')}
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+              activeTab === 'bookings'
+                ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg shadow-emerald-950/40'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <CalendarCheck size={16} />
+            <span>حجوزات المنتجع ({bookings.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('water')}
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+              activeTab === 'water'
+                ? 'bg-gradient-to-r from-teal-500 to-emerald-600 text-slate-950 shadow-lg shadow-teal-950/40'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Droplets size={16} />
+            <span>طلبات وايت الماء ({waterOrders.length})</span>
+          </button>
+        </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 size={32} className="text-emerald-400 animate-spin" />
           </div>
-        ) : bookings.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="text-5xl mb-4">📅</div>
-            <p className="text-gray-400">لا توجد حجوزات بعد</p>
-            <a href="/book" className="btn-primary mt-4 inline-flex">احجز الآن</a>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {bookings.map(b => (
-              <div key={b.id} className="card p-5 animate-fade-in-up">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-bold text-white">{b.properties?.name ?? 'المنتجع'}</h3>
-                    <p className="text-sm text-gray-400">{formatArabicDate(parseISO(b.booking_date))}</p>
+        ) : activeTab === 'bookings' ? (
+          // ── RESORT BOOKINGS TAB ──
+          bookings.length === 0 ? (
+            <div className="text-center py-16 card glass p-8">
+              <div className="text-5xl mb-4">🌴</div>
+              <h3 className="text-lg font-bold text-white mb-1">لا توجد حجوزات منتجع مسجلة</h3>
+              <p className="text-gray-400 text-sm mb-5">اختر موعدك المفضل واستمتع بأروع إقامة عائلية</p>
+              <a href="/book" className="btn-primary inline-flex items-center gap-2 py-2.5 px-6">
+                <CalendarCheck size={16} />
+                <span>احجز الآن</span>
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {bookings.map(b => (
+                <div key={b.id} className="card p-5 animate-fade-in-up border border-white/10 hover:border-emerald-500/30 transition-all">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h3 className="font-bold text-white text-base">{b.properties?.name ?? 'المنتجع الكامل'}</h3>
+                      <p className="text-xs sm:text-sm text-gray-400 mt-0.5">{formatArabicDate(parseISO(b.booking_date))}</p>
+                    </div>
+                    <span className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-semibold ${STATUS_CLASSES[b.status]}`}>
+                      {getStatusIcon(b.status)}
+                      {STATUS_LABELS[b.status] ?? b.status}
+                    </span>
                   </div>
-                  <span className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-full ${STATUS_CLASSES[b.status]}`}>
-                    {getStatusIcon(b.status)}
-                    {STATUS_LABELS[b.status] ?? b.status}
-                  </span>
-                </div>
 
-                <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
-                  <div className="glass p-2.5 rounded-lg">
-                    <p className="text-gray-500 text-xs mb-0.5">الإجمالي</p>
-                    <p className="font-bold text-white">{formatCurrency(b.total_amount)}</p>
+                  <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
+                    <div className="glass p-2.5 rounded-xl border border-white/5">
+                      <p className="text-gray-400 text-xs mb-0.5">إجمالي المبلغ</p>
+                      <p className="font-bold text-white">{formatCurrency(b.total_amount)}</p>
+                    </div>
+                    <div className="glass p-2.5 rounded-xl border border-white/5">
+                      <p className="text-gray-400 text-xs mb-0.5">العربون المدفوع</p>
+                      <p className="font-bold text-amber-400">{formatCurrency(b.deposit_amount)}</p>
+                    </div>
                   </div>
-                  <div className="glass p-2.5 rounded-lg">
-                    <p className="text-gray-500 text-xs mb-0.5">العربون</p>
-                    <p className="font-bold text-amber-400">{formatCurrency(b.deposit_amount)}</p>
-                  </div>
-                </div>
 
-                {b.status === 'pending_receipt' && (
-                  <div className="mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex gap-2">
-                    <Clock size={12} className="flex-shrink-0 mt-0.5" />
-                    بانتظار رفع الإيصال — ينتهي الحجز خلال ساعتين إن لم يُرفع
-                  </div>
-                )}
-
-                {b.cancellation_reason && (
-                  <div className="mb-3 text-xs text-gray-500">
-                    سبب الإلغاء: {b.cancellation_reason}
-                  </div>
-                )}
-
-                <div className="flex flex-wrap gap-2">
-                  {canCancel(b) && (
-                    <button
-                      onClick={() => setCancelModal(b)}
-                      className="btn-danger text-xs py-2 px-3"
-                    >
-                      <X size={13} />
-                      إلغاء الحجز
-                    </button>
+                  {b.status === 'pending_receipt' && (
+                    <div className="mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-center gap-2">
+                      <Clock size={14} className="shrink-0" />
+                      <span>بانتظار إرفاق الإيصال البنكي لتأكيد الحجز</span>
+                    </div>
                   )}
-                  <a
-                    href={generateWhatsAppLink('0547382222', `السلام عليكم، لدي استفسار عن حجزي رقم: ${b.id.slice(0, 8)}`)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn-ghost text-xs py-2 px-3"
-                  >
-                    <MessageCircle size={13} />
-                    تواصل معنا
-                  </a>
+
+                  {b.cancellation_reason && (
+                    <div className="mb-3 text-xs text-gray-400 bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl">
+                      سبب الإلغاء: {b.cancellation_reason}
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-white/5">
+                    {canDirectCancel(b) && (
+                      <button
+                        onClick={() => setCancelModal(b)}
+                        className="btn-danger text-xs py-2 px-3.5 rounded-xl"
+                      >
+                        <X size={13} />
+                        <span>إلغاء الحجز</span>
+                      </button>
+                    )}
+
+                    {isConfirmedBooking(b) && (
+                      <a
+                        href={generateWhatsAppLink(
+                          settings.contact_whatsapp || '0547382222',
+                          `السلام عليكم، أود طلب إلغاء أو تعديل الحجز المؤكد رقم: ${b.id.slice(0, 8)} بتاريخ ${b.booking_date} (الاسم: ${b.customer_name})`
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-ghost text-xs py-2 px-3.5 rounded-xl flex items-center gap-1.5 text-amber-400 hover:text-amber-300 border border-amber-500/20 hover:border-amber-500/40"
+                        title="الحجوزات المؤكدة تتطلب التنسيق المباشر مع إدارة المنتجع"
+                      >
+                        <AlertTriangle size={13} className="text-amber-400" />
+                        <span>طلب إلغاء الحجز عبر الإدارة</span>
+                      </a>
+                    )}
+
+                    <a
+                      href={generateWhatsAppLink(settings.contact_whatsapp || '0547382222', `السلام عليكم، لدي استفسار بخصوص حجز رقم: ${b.id.slice(0, 8)} بتاريخ ${b.booking_date}`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-ghost text-xs py-2 px-3.5 rounded-xl flex items-center gap-1.5"
+                    >
+                      <MessageCircle size={14} className="text-emerald-400" />
+                      <span>تواصل مع الإدارة</span>
+                    </a>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )
+        ) : (
+          // ── WATER ORDERS TAB ──
+          waterOrders.length === 0 ? (
+            <div className="text-center py-16 card glass p-8">
+              <div className="text-5xl mb-4">💧</div>
+              <h3 className="text-lg font-bold text-white mb-1">لا توجد طلبات وايت ماء حلو مسجلة</h3>
+              <p className="text-gray-400 text-sm mb-5">نوفر لكم مياه عذبة نقية مع خدمة التوصيل السريع للمنازل والاستراحات</p>
+              <a href="/water" className="btn-primary inline-flex items-center gap-2 py-2.5 px-6">
+                <Droplets size={16} />
+                <span>اطلب وايت الآن</span>
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {waterOrders.map(wo => {
+                const conf = WATER_STATUS_CONFIG[wo.status] || {
+                  label: wo.status,
+                  badgeClass: 'bg-white/10 text-gray-300 border border-white/10',
+                }
+                return (
+                  <div key={wo.id} className="card p-5 animate-fade-in-up border border-teal-500/20 hover:border-teal-500/40 transition-all">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🚚</span>
+                          <h3 className="font-bold text-white text-base">{wo.tanker_size_name}</h3>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                          <MapPin size={12} className="text-teal-400" />
+                          <span>حي {wo.district}</span>
+                          {wo.street_address && <span>• {wo.street_address}</span>}
+                        </p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${conf.badgeClass}`}>
+                        {conf.label}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
+                      <div className="glass p-2.5 rounded-xl border border-white/5">
+                        <p className="text-gray-400 text-xs mb-0.5">المبلغ</p>
+                        <p className="font-bold text-amber-300">{formatCurrency(wo.tanker_price)}</p>
+                      </div>
+                      <div className="glass p-2.5 rounded-xl border border-white/5">
+                        <p className="text-gray-400 text-xs mb-0.5">نوع الخزان</p>
+                        <p className="font-bold text-white text-xs sm:text-sm">خزان {wo.tank_type}</p>
+                      </div>
+                    </div>
+
+                    {wo.notes && (
+                      <div className="mb-3 text-xs text-gray-400 bg-white/5 p-2.5 rounded-xl">
+                        ملاحظات السائق: {wo.notes}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-white/5">
+                      <a
+                        href={generateWhatsAppLink(
+                          settings.water_contact_whatsapp || settings.contact_whatsapp || '0547382222',
+                          `السلام عليكم، أود الاستفسار عن طلب الوايت رقم: ${wo.id.slice(0, 8)} (${wo.tanker_size_name}) للحي: ${wo.district}`
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-ghost text-xs py-2 px-3.5 rounded-xl flex items-center gap-1.5"
+                      >
+                        <MessageCircle size={14} className="text-teal-400" />
+                        <span>متابعة مع السائق / الإدارة</span>
+                      </a>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )
         )}
       </div>
 
@@ -228,7 +478,7 @@ const MyBookingsPage: React.FC = () => {
             <h3 className="text-xl font-bold text-white mb-3">تأكيد إلغاء الحجز</h3>
 
             <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/25 mb-4 text-sm text-red-200 flex gap-2.5">
-              <AlertTriangle size={18} className="flex-shrink-0 mt-0.5 text-red-400" />
+              <AlertTriangle size={18} className="shrink-0 mt-0.5 text-red-400" />
               <div>
                 <p className="font-bold text-red-300 mb-1">⚠️ تنبيه هام لسياسة الإلغاء:</p>
                 <ul className="list-disc list-inside space-y-1 text-xs text-red-200/90 leading-relaxed">

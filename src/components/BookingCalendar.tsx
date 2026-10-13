@@ -67,7 +67,15 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
   const firstDayOfWeek = (rawFirstDay + 1) % 7
 
   const getDayStatus = (date: Date): DateStatus => {
-    if (isBefore(date, startOfDay(new Date()))) return { status: 'past' }
+    const now = new Date()
+    if (isBefore(date, startOfDay(now))) return { status: 'past' }
+
+    // Same-day cutoff guard: if booking today and it's already evening (after 5:00 PM / 17:00),
+    // mark as past so guests don't book after check-in hours have passed
+    if (isToday(date) && now.getHours() >= 17) {
+      return { status: 'past' }
+    }
+
     const key = format(date, 'yyyy-MM-dd')
     if (dateStatuses[key]) return dateStatuses[key]
     return {

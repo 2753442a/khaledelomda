@@ -273,6 +273,73 @@ export type Database = {
           created_at?: string
         }
       }
+      heritage_furniture: {
+        Row: {
+          id: string
+          name: string
+          category: string
+          description: string
+          price: number
+          discount_price: number | null
+          image_url: string
+          images: string[]
+          features: string[]
+          in_stock: boolean
+          stock_quantity: number
+          display_order: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          category?: string
+          description: string
+          price: number
+          discount_price?: number | null
+          image_url: string
+          images?: string[]
+          features?: string[]
+          in_stock?: boolean
+          stock_quantity?: number
+          display_order?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          category?: string
+          description?: string
+          price?: number
+          discount_price?: number | null
+          image_url?: string
+          images?: string[]
+          features?: string[]
+          in_stock?: boolean
+          stock_quantity?: number
+          display_order?: number
+          is_active?: boolean
+          created_at?: string
+        }
+      }
     }
   }
+}
+
+export interface HeritageFurniture {
+  id: string
+  name: string
+  category: string
+  description: string
+  price: number
+  discount_price?: number | null
+  image_url: string
+  images?: string[]
+  features?: string[]
+  in_stock: boolean
+  stock_quantity?: number
+  display_order?: number
+  is_active?: boolean
+  created_at?: string
 }

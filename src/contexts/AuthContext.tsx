@@ -16,6 +16,7 @@ interface Profile {
 interface AuthContextType {
   user: User | null
   profile: Profile | null
+  isAdmin: boolean
   loading: boolean
   signUp: (fullName: string, phone: string, password: string) => Promise<{ error: string | null }>
   signIn: (phone: string, password: string) => Promise<{ error: string | null }>
@@ -36,12 +37,14 @@ const ADMIN_PHONES = ['0556854162']
 export const isAdminPhone = (phone?: string | null): boolean => {
   if (!phone) return false
   const clean = phone.replace(/[^0-9]/g, '')
-  return ADMIN_PHONES.includes(clean)
+  const normalized = clean.startsWith('966') ? '0' + clean.slice(3) : clean
+  return ADMIN_PHONES.includes(normalized) || ADMIN_PHONES.includes(clean)
 }
 
 const phoneToEmail = (phone: string) => {
   const clean = phone.replace(/[^0-9]/g, '')
-  return `${clean}@khalidresort.com`
+  const normalized = clean.startsWith('966') ? '0' + clean.slice(3) : clean
+  return `${normalized}@khalidresort.com`
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -58,16 +61,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single()
 
       const userToCheck = currentUser || user
-      const sessionPhone = userToCheck?.user_metadata?.phone || userToCheck?.email?.split('@')[0] || ''
+      const rawPhone = userToCheck?.user_metadata?.phone || userToCheck?.email?.split('@')[0] || ''
+      const sessionPhone = rawPhone.replace(/[^0-9]/g, '')
 
       if (!error && data) {
         if ((isAdminPhone(data.phone) || isAdminPhone(sessionPhone)) && data.role !== 'admin') {
           data.role = 'admin'
-          await supabase.from('profiles').update({ role: 'admin' }).eq('id', userId)
+          try {
+            await supabase.from('profiles').update({ role: 'admin' }).eq('id', userId)
+          } catch (_) {}
         }
         setProfile(data)
       } else if (userToCheck) {
-        const isAdmin = isAdminPhone(sessionPhone)
+        const isAdmin = isAdminPhone(sessionPhone) || userToCheck.user_metadata?.role === 'admin'
         const fallbackProfile: Profile = {
           id: userId,
           full_name: userToCheck.user_metadata?.full_name || (isAdmin ? 'إدارة المنتجع' : 'مستخدم'),
@@ -108,7 +114,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signUp = async (fullName: string, phone: string, password: string) => {
     try {
-      const cleanPhone = phone.replace(/\s/g, '')
+      const clean = phone.replace(/[^0-9]/g, '')
+      const cleanPhone = clean.startsWith('966') ? '0' + clean.slice(3) : clean
       const email = phoneToEmail(cleanPhone)
       const isAdmin = isAdminPhone(cleanPhone)
       const { data, error } = await supabase.auth.signUp({
@@ -142,7 +149,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signIn = async (phone: string, password: string) => {
     try {
-      const email = phoneToEmail(phone)
+      const clean = phone.replace(/[^0-9]/g, '')
+      const cleanPhone = clean.startsWith('966') ? '0' + clean.slice(3) : clean
+      const email = phoneToEmail(cleanPhone)
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) return { error: 'رقم الجوال أو كلمة المرور غير صحيحة' }
       return { error: null }
@@ -166,8 +175,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user) await fetchProfile(user.id, user)
   }
 
+  const isAdmin = Boolean(
+    profile?.role === 'admin' ||
+    isAdminPhone(profile?.phone) ||
+    isAdminPhone(user?.user_metadata?.phone) ||
+    isAdminPhone(user?.email?.split('@')[0])
+  )
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signUp, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, isAdmin, loading, signUp, signIn, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

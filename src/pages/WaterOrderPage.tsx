@@ -2,12 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { useSettings } from '../contexts/SettingsContext'
 import { formatCurrency, generateWhatsAppLink } from '../lib/utils'
 import { WaterLocationPicker } from '../components/WaterLocationPicker'
 import {
   Droplets, MapPin, Navigation, Phone, User, CheckCircle2,
-  AlertCircle, Loader2, MessageCircle, Home, ShieldCheck,
-  CreditCard, Banknote, ArrowRight, Sparkles, Clock, Check
+  AlertCircle, AlertTriangle, Loader2, MessageCircle, Home, ShieldCheck,
+  CreditCard, Banknote, ArrowRight, Sparkles, Clock, Check,
+  Copy, CheckCheck
 } from 'lucide-react'
 
 interface TankerSize {
@@ -40,6 +42,7 @@ const DEFAULT_SIZES: TankerSize[] = [
 
 export const WaterOrderPage: React.FC = () => {
   const { user, profile } = useAuth()
+  const { settings } = useSettings()
   const navigate = useNavigate()
 
   const [sizes, setSizes] = useState<TankerSize[]>([])
@@ -63,6 +66,8 @@ export const WaterOrderPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const [createdOrder, setCreatedOrder] = useState<any | null>(null)
+  const [orderSavedToDb, setOrderSavedToDb] = useState(true)
+  const [copiedIban, setCopiedIban] = useState(false)
 
   // Pre-fill user data
   useEffect(() => {
@@ -83,16 +88,18 @@ export const WaterOrderPage: React.FC = () => {
           .eq('is_active', true)
           .order('display_order', { ascending: true })
 
-        if (error || !data || data.length === 0) {
-          setSizes(DEFAULT_SIZES)
-          setSelectedSizeId(DEFAULT_SIZES[0].id)
-        } else {
+        if (!error && data) {
           setSizes(data as TankerSize[])
-          setSelectedSizeId(data[0].id)
+          if (data.length > 0) {
+            setSelectedSizeId(data[0].id)
+          } else {
+            setSelectedSizeId('')
+          }
+        } else if (error) {
+          console.warn('Could not fetch water tanker sizes:', error.message)
         }
       } catch (err) {
-        setSizes(DEFAULT_SIZES)
-        setSelectedSizeId(DEFAULT_SIZES[0].id)
+        console.warn('Water tanker sizes fetch notice:', err)
       } finally {
         setLoadingSizes(false)
       }
@@ -146,11 +153,17 @@ export const WaterOrderPage: React.FC = () => {
     setSubmitting(true)
 
     try {
+      const clean = customerPhone.replace(/[^0-9]/g, '')
+      const normalizedPhone = clean.startsWith('966') ? '0' + clean.slice(3) : clean
+
+      const isValidUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
+      const validTankerSizeId = selectedSize.id && isValidUuid(selectedSize.id) ? selectedSize.id : null
+
       const orderPayload = {
         customer_id: user?.id || null,
         customer_name: customerName.trim(),
-        customer_phone: customerPhone.trim(),
-        tanker_size_id: selectedSize.id.startsWith('default-') ? null : selectedSize.id,
+        customer_phone: normalizedPhone,
+        tanker_size_id: validTankerSizeId,
         tanker_size_name: selectedSize.name,
         tanker_price: selectedSize.price,
         district: district.trim(),
@@ -169,17 +182,20 @@ export const WaterOrderPage: React.FC = () => {
         .single()
 
       if (error) {
-        // Even if table not created yet in Supabase, create local order object for WhatsApp dispatch
-        console.warn('Supabase insert notice:', error)
+        console.warn('Supabase insert notice (will rely on direct WhatsApp dispatch):', error)
+        setOrderSavedToDb(false)
         setCreatedOrder({
           ...orderPayload,
           id: `WO-${Date.now().toString().slice(-6)}`,
           created_at: new Date().toISOString(),
         })
       } else {
+        setOrderSavedToDb(true)
         setCreatedOrder(data)
       }
     } catch (err: any) {
+      console.warn('Network/Supabase error caught:', err)
+      setOrderSavedToDb(false)
       setCreatedOrder({
         customer_name: customerName,
         customer_phone: customerPhone,
@@ -268,7 +284,7 @@ ${order.notes ? `📝 *ملاحظات إضافية:* ${order.notes}\nـــــ�
 
             <div className="flex sm:flex-col gap-2 shrink-0">
               <a
-                href={generateWhatsAppLink('0547382222', 'السلام عليكم، أود طلب وايت ماء حلو')}
+                href={generateWhatsAppLink(settings.water_contact_whatsapp || settings.contact_whatsapp || '0547382222', 'السلام عليكم، أود طلب وايت ماء حلو')}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2.5 rounded-xl bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
@@ -277,11 +293,11 @@ ${order.notes ? `📝 *ملاحظات إضافية:* ${order.notes}\nـــــ�
                 <span>واتساب مباشر</span>
               </a>
               <a
-                href="tel:0543034553"
+                href={`tel:${settings.water_contact_phone || settings.contact_phone || '0543034553'}`}
                 className="px-4 py-2.5 rounded-xl glass hover:bg-white/10 text-gray-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Phone size={14} className="text-teal-400" />
-                <span dir="ltr">0543034553</span>
+                <span dir="ltr">{settings.water_contact_phone || settings.contact_phone || '0543034553'}</span>
               </a>
             </div>
           </div>
@@ -304,6 +320,12 @@ ${order.notes ? `📝 *ملاحظات إضافية:* ${order.notes}\nـــــ�
             {loadingSizes ? (
               <div className="py-8 flex items-center justify-center">
                 <Loader2 size={28} className="text-teal-400 animate-spin" />
+              </div>
+            ) : sizes.length === 0 ? (
+              <div className="p-8 text-center rounded-2xl bg-teal-950/30 border border-teal-500/20 space-y-3">
+                <span className="text-3xl">💧</span>
+                <h4 className="text-sm font-bold text-teal-300">خدمة الطلب الإلكتروني للوايت قيد التحديث</h4>
+                <p className="text-xs text-gray-300">لطلب وايت ماء حلو حالياً، يسعدنا تواصلكم المباشر عبر الهاتف أو الواتساب.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -508,10 +530,25 @@ ${order.notes ? `📝 *ملاحظات إضافية:* ${order.notes}\nـــــ�
 
             {/* Bank Transfer Info Box */}
             {paymentMethod === 'bank_transfer' && (
-              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs sm:text-sm space-y-1.5">
-                <p className="font-bold text-amber-300">بيانات التحويل البنكي (مصرف الراجحي):</p>
-                <p className="text-gray-300">اسم الحساب: خالد العمدة</p>
-                <p className="font-mono text-amber-200" dir="ltr">SA0000000000000000000000</p>
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs sm:text-sm space-y-2">
+                <p className="font-bold text-amber-300">بيانات التحويل البنكي ({settings.bank_name || 'مصرف الراجحي'}):</p>
+                <p className="text-gray-300">اسم الحساب: <span className="text-white font-medium">{settings.bank_account_name || 'خالد العمدة'}</span></p>
+                <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-black/40 border border-white/10">
+                  <span className="font-mono text-amber-200 text-xs sm:text-sm" dir="ltr">{settings.bank_iban || 'SA0000000000000000000000'}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigator.clipboard.writeText(settings.bank_iban)
+                      setCopiedIban(true)
+                      setTimeout(() => setCopiedIban(false), 2500)
+                    }}
+                    className="px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-semibold flex items-center gap-1 transition-colors"
+                  >
+                    {copiedIban ? <CheckCheck size={14} /> : <Copy size={14} />}
+                    <span>{copiedIban ? 'تم النسخ' : 'نسخ الآيبان'}</span>
+                  </button>
+                </div>
                 <p className="text-[11px] text-gray-400">يرجى إرسال إشعار التحويل عبر الواتساب فور إرسال الطلب.</p>
               </div>
             )}
@@ -574,16 +611,31 @@ ${order.notes ? `📝 *ملاحظات إضافية:* ${order.notes}\nـــــ�
       {createdOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
           <div className="card glass-strong max-w-lg w-full p-6 sm:p-8 border border-teal-500/30 shadow-2xl space-y-6 text-center animate-scale-in">
-            <div className="w-16 h-16 rounded-full bg-teal-500/20 text-teal-400 mx-auto flex items-center justify-center text-3xl">
-              💧
+            <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl ${
+              orderSavedToDb ? 'bg-teal-500/20 text-teal-400' : 'bg-amber-500/20 text-amber-400'
+            }`}>
+              {orderSavedToDb ? '💧' : '📲'}
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-2xl font-black text-white">تم استلام طلب الوايت بنجاح!</h3>
+              <h3 className="text-2xl font-black text-white">
+                {orderSavedToDb ? 'تم تسجيل طلب الوايت بنجاح! ✅' : 'طلبك جاهز للإرسال عبر الواتساب 📲'}
+              </h3>
               <p className="text-xs sm:text-sm text-gray-300">
-                شكراً لثقتكم بنا، تم تسجيل طلبكم وسيقوم السائق بالتواصل معكم فوراً لتفريغ الماء.
+                {orderSavedToDb
+                  ? 'شكراً لثقتكم بنا، تم حفظ طلبكم في النظام وسيقوم السائق بالتواصل معكم فوراً لتفريغ الماء.'
+                  : 'تم تجهيز تفاصيل طلبك بنجاح، يُرجى الضغط أدناه لإرسال الطلب والموقع للسائق مباشرة عبر الواتساب لتأكيده.'}
               </p>
             </div>
+
+            {!orderSavedToDb && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs text-right flex items-start gap-2.5">
+                <AlertTriangle size={18} className="shrink-0 text-amber-400 mt-0.5" />
+                <p className="leading-relaxed">
+                  <strong className="text-amber-300">تنبيه تأكيد الطلب:</strong> لضمان سرعة خروج الوايت وتوجيهه لموقعك، اضغط على زر الواتساب لإرسال إحداثيات موقعك للسائق فوراً.
+                </p>
+              </div>
+            )}
 
             {/* Order summary box */}
             <div className="p-4 rounded-2xl bg-white/5 border border-white/8 text-right text-xs sm:text-sm space-y-2 font-medium">
@@ -614,13 +666,21 @@ ${order.notes ? `📝 *ملاحظات إضافية:* ${order.notes}\nـــــ�
             {/* Action buttons */}
             <div className="space-y-3">
               <a
-                href={generateWhatsAppLink('0547382222', getWhatsAppMessage(createdOrder))}
+                href={generateWhatsAppLink(settings.water_contact_whatsapp || settings.contact_whatsapp || '0547382222', getWhatsAppMessage(createdOrder))}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg shadow-green-600/30 transition-all hover:scale-105"
+                className={`w-full py-3.5 px-6 rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-105 ${
+                  orderSavedToDb
+                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white shadow-green-600/30'
+                    : 'bg-gradient-to-r from-amber-500 via-emerald-500 to-green-600 text-slate-950 shadow-amber-500/30 animate-pulse'
+                }`}
               >
                 <MessageCircle size={19} />
-                <span>إرسال التفاصيل والموقع للسائق عبر الواتساب</span>
+                <span>
+                  {orderSavedToDb
+                    ? 'إرسال التفاصيل والموقع للسائق عبر الواتساب'
+                    : '📲 إرسال الطلب والموقع للسائق لتأكيده (مطلوب)'}
+                </span>
               </a>
 
               <button

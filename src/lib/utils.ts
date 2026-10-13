@@ -38,12 +38,6 @@ export function formatTime(timeStr?: string | Date | null): string {
     }
   }
 
-  // Business Logic Guard: 03:00 AM is never an operational checkout/checkin time
-  if (h === 3 && m === 0) {
-    h = 11
-    m = 30
-  }
-
   const period = h >= 12 ? 'م' : 'ص'
   const hour12 = h % 12 || 12
   return `${String(hour12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`
@@ -65,8 +59,8 @@ export function formatCheckInTime(time?: string | Date | null): string {
       if (!isNaN(parts[1])) m = parts[1]
     }
   }
-  // Check-in safeguard: default to 03:30 PM if empty, midnight, 3 AM, or invalid
-  if (h === 0 || h === 3 || h === -1) return '03:30 م'
+  // Check-in safeguard: fallback to 03:30 PM if empty, unparseable, or midnight 00:00
+  if (h === -1 || (h === 0 && m === 0)) return '03:30 م'
   const period = h >= 12 ? 'م' : 'ص'
   const hour12 = h % 12 || 12
   return `${String(hour12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`
@@ -88,8 +82,8 @@ export function formatCheckOutTime(time?: string | Date | null): string {
       if (!isNaN(parts[1])) m = parts[1]
     }
   }
-  // Check-out safeguard: default to 11:30 AM if empty, midnight, 3 AM, or invalid
-  if (h === 0 || h === 3 || h === -1) return '11:30 ص'
+  // Check-out safeguard: fallback to 11:30 AM if empty, unparseable, or midnight 00:00
+  if (h === -1 || (h === 0 && m === 0)) return '11:30 ص'
   const period = h >= 12 ? 'م' : 'ص'
   const hour12 = h % 12 || 12
   return `${String(hour12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`

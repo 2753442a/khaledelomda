@@ -104,15 +104,19 @@ export const WebsiteCmsTab: React.FC<WebsiteCmsTabProps> = ({ showToast }) => {
             <div className="absolute inset-0 bg-gradient-to-b from-slate-950/85 via-emerald-950/75 to-slate-950" />
 
             <div className="relative z-10 max-w-2xl space-y-3">
-              <span className="inline-block px-3.5 py-1 rounded-full text-xs font-semibold bg-emerald-950/70 text-emerald-300 border border-emerald-500/30">
-                {form.hero_badge || '🌴💧 واحة الاسترخاء والمناسبات في قلب الطبيعة'}
-              </span>
+              {Boolean(form.hero_badge) && (
+                <span className="inline-block px-3.5 py-1 rounded-full text-xs font-semibold bg-emerald-950/70 text-emerald-300 border border-emerald-500/30">
+                  {form.hero_badge}
+                </span>
+              )}
               <h3 className="text-2xl sm:text-3xl font-black text-white">
                 مرحباً بكم في <span className="text-emerald-300">{form.hero_title || 'منتجع وبستان خالد العمدة'}</span>
               </h3>
-              <p className="text-xs sm:text-sm text-gray-200 line-clamp-3 leading-relaxed">
-                {form.hero_subtitle}
-              </p>
+              {Boolean(form.hero_subtitle) && (
+                <p className="text-xs sm:text-sm text-gray-200 line-clamp-3 leading-relaxed">
+                  {form.hero_subtitle}
+                </p>
+              )}
               <div className="flex flex-wrap justify-center gap-2 pt-2">
                 <span className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md">
                   احجز الآن

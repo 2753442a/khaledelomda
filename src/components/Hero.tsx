@@ -102,11 +102,13 @@ export const Hero: React.FC = () => {
 
       {/* ── Hero Foreground Content ── */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-4 pt-28 sm:pt-36 pb-12 max-w-5xl mx-auto w-full">
-        {/* Floating Badge */}
-        <div className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 rounded-full mb-6 border border-emerald-500/40 bg-emerald-950/60 backdrop-blur-md shadow-lg shadow-emerald-950/50 text-emerald-300 text-xs sm:text-sm font-semibold animate-fade-in-up">
-          <span>{settings.hero_badge || '🌴💧 واحة الاسترخاء والمناسبات في قلب الطبيعة'}</span>
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-1" />
-        </div>
+        {/* Floating Badge (only if defined) */}
+        {Boolean(settings.hero_badge) && (
+          <div className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 rounded-full mb-6 border border-emerald-500/40 bg-emerald-950/60 backdrop-blur-md shadow-lg shadow-emerald-950/50 text-emerald-300 text-xs sm:text-sm font-semibold animate-fade-in-up">
+            <span>{settings.hero_badge}</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-1" />
+          </div>
+        )}
 
         {/* Dynamic Title with Emerald-to-Gold Luxury Gradient */}
         <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black mb-6 leading-tight tracking-tight animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
@@ -122,9 +124,11 @@ export const Hero: React.FC = () => {
         </h1>
 
         {/* Subtitle Description */}
-        <p className="text-gray-200 text-sm sm:text-lg max-w-2xl mx-auto mb-9 leading-relaxed font-normal animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-          {settings.hero_subtitle || 'انغمس في تجربة استثنائية تجمع بين بستان النخيل والمسطحات الخضراء، والمسبح الفيروزي والألعاب المائية، ومجالس الضيافة الملكية في خصوصية تامة تلبي كافة تطلعاتكم.'}
-        </p>
+        {Boolean(settings.hero_subtitle) && (
+          <p className="text-gray-200 text-sm sm:text-lg max-w-2xl mx-auto mb-9 leading-relaxed font-normal animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+            {settings.hero_subtitle}
+          </p>
+        )}
 
         {/* CTA Buttons */}
         <div className="flex flex-wrap items-center justify-center gap-3.5 sm:gap-4 w-full animate-fade-in-up" style={{ animationDelay: '0.3s' }}>

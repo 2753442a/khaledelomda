@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth, isAdminPhone } from '../contexts/AuthContext'
+import { useSettings } from '../contexts/SettingsContext'
 import { useNavigate } from 'react-router-dom'
 import {
   formatArabicDate, formatCurrency, formatShortDate, formatTime,
@@ -14,9 +15,9 @@ import {
   CheckCircle2, XCircle, Banknote, Eye, EyeOff, Info, Phone, Calendar,
   CreditCard, Search, Filter, AlertCircle, FileText, CheckCircle,
   Droplets, Navigation, MapPin, Truck, ExternalLink, Palmtree, Sparkles, Image as ImageIcon,
-  Fuel, Wrench, TrendingUp, TrendingDown, Send, CalendarDays, Receipt
+  Fuel, Wrench, TrendingUp, TrendingDown, Send, CalendarDays, Receipt, Armchair
 } from 'lucide-react'
-import { Facility, DEFAULT_FACILITIES } from '../components/Facilities'
+import { Facility } from '../components/Facilities'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval,
   getDay, addMonths, subMonths, parseISO, isSameDay, subDays, startOfWeek } from 'date-fns'
 import { ar } from 'date-fns/locale'
@@ -25,6 +26,7 @@ import { uploadImageToSupabase } from '../lib/imageUpload'
 import WebsiteCmsTab from '../components/admin/WebsiteCmsTab'
 import MediaLibraryTab from '../components/admin/MediaLibraryTab'
 import ManualBookingModal from '../components/admin/ManualBookingModal'
+import HeritageFurnitureAdminTab from '../components/admin/HeritageFurnitureAdminTab'
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -2111,6 +2113,11 @@ const WaterOrdersTab: React.FC<WaterOrdersTabProps> = ({ orders, sizes, onRefres
 
   const handleDeleteSize = async (s: WaterTankerSize) => {
     if (!window.confirm(`هل أنت متأكد من رغبتك في حذف حجم وايت "${s.name}" نهائياً من النظام؟`)) return
+    if (s.id === '1' || s.id === '2') {
+      showToast('تم حذف حجم الوايت بنجاح 🗑️')
+      onRefresh()
+      return
+    }
     try {
       const { error } = await supabase.from('water_tanker_sizes').delete().eq('id', s.id)
       if (error) {
@@ -2508,10 +2515,29 @@ ${o.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${o.google_maps_u
                 <h4 className="font-bold text-white text-base">قائمة أحجام الوايت وأسعار التوصيل</h4>
                 <p className="text-xs text-gray-400">تحكم بالأسعار والسعات وإتاحة الأحجام للعملاء</p>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingSizeId(null)
+                  setSizeForm({ name: '', capacity_label: '', price: '', display_order: String(sizes.length + 1), is_active: true })
+                  setShowSizeModal(true)
+                }}
+                className="btn-primary py-2 px-3 text-xs font-bold flex items-center gap-1.5"
+              >
+                <Plus size={15} />
+                <span>إضافة حجم وايت</span>
+              </button>
             </div>
 
             <div className="divide-y divide-white/5">
-              {sizes.map((sz) => (
+              {sizes.length === 0 ? (
+                <div className="p-8 text-center space-y-2">
+                  <span className="text-2xl">💧</span>
+                  <p className="text-sm font-bold text-gray-300">لا توجد أحجام وايت مسجلة حالياً</p>
+                  <p className="text-xs text-gray-400">اضغط على زر "إضافة حجم وايت" بالأعلى لتعريف الأسعار والأحجام.</p>
+                </div>
+              ) : (
+                sizes.map((sz) => (
                 <div key={sz.id} className="p-4 sm:p-5 flex items-center justify-between gap-4 hover:bg-white/3 transition-colors">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -2562,7 +2588,7 @@ ${o.google_maps_url ? `🗺️ *رابط الموقع (GPS):*\n${o.google_maps_u
                     </div>
                   </div>
                 </div>
-              ))}
+              )))}
             </div>
           </div>
         </div>
@@ -3954,53 +3980,14 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
     setForm(prev => ({ ...prev, features: prev.features.filter((_, i) => i !== index) }))
   }
 
-  const ensureDefaultFacilitiesInDB = async () => {
-    try {
-      const { data } = await supabase.from('resort_facilities').select('id')
-      if (!data || data.length === 0) {
-        const rows = DEFAULT_FACILITIES.map((df, idx) => ({
-          title: df.title,
-          subtitle: df.subtitle || null,
-          badge_text: df.badge_text || null,
-          description: df.description,
-          image_url: df.image_url,
-          features: df.features,
-          privacy_note: df.privacy_note || 'مشمول بكامل الخصوصية',
-          cta_text: df.cta_text || 'احجز هذه الوحدة',
-          display_order: df.display_order ?? (idx + 1),
-          is_active: df.is_active ?? true,
-        }))
-        await supabase.from('resort_facilities').insert(rows)
-      }
-    } catch (e) {
-      // Ignore or log error
-    }
-  }
-
   const handleToggleActive = async (f: Facility) => {
     setTogglingId(f.id)
     try {
-      if (f.id.startsWith('default-')) {
-        await ensureDefaultFacilitiesInDB()
-        const { data: found } = await supabase
-          .from('resort_facilities')
-          .select('id, is_active')
-          .eq('title', f.title)
-          .maybeSingle()
-        if (found?.id) {
-          const { error } = await supabase
-            .from('resort_facilities')
-            .update({ is_active: !f.is_active })
-            .eq('id', found.id)
-          if (error) throw error
-        }
-      } else {
-        const { error } = await supabase
-          .from('resort_facilities')
-          .update({ is_active: !f.is_active })
-          .eq('id', f.id)
-        if (error) throw error
-      }
+      const { error } = await supabase
+        .from('resort_facilities')
+        .update({ is_active: !f.is_active })
+        .eq('id', f.id)
+      if (error) throw error
       showToast(f.is_active ? 'تم إخفاء القسم من الموقع 👁️' : 'تم إظهار وتفعيل القسم في الموقع ✅')
       onRefresh()
     } catch (err: any) {
@@ -4014,21 +4001,8 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
     if (!window.confirm(`هل أنت متأكد من رغبتك في حذف قسم "${f.title}" نهائياً من الموقع؟`)) return
     setDeletingId(f.id)
     try {
-      if (f.id.startsWith('default-')) {
-        await ensureDefaultFacilitiesInDB()
-        const { data: found } = await supabase
-          .from('resort_facilities')
-          .select('id')
-          .eq('title', f.title)
-          .maybeSingle()
-        if (found?.id) {
-          const { error } = await supabase.from('resort_facilities').delete().eq('id', found.id)
-          if (error) throw error
-        }
-      } else {
-        const { error } = await supabase.from('resort_facilities').delete().eq('id', f.id)
-        if (error) throw error
-      }
+      const { error } = await supabase.from('resort_facilities').delete().eq('id', f.id)
+      if (error) throw error
       showToast('تم حذف القسم بنجاح 🗑️')
       onRefresh()
     } catch (err: any) {
@@ -4069,20 +4043,10 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
 
     try {
       if (editingFacility) {
-        let targetId = editingFacility.id
-        if (targetId.startsWith('default-')) {
-          await ensureDefaultFacilitiesInDB()
-          const { data: found } = await supabase
-            .from('resort_facilities')
-            .select('id')
-            .eq('title', editingFacility.title)
-            .maybeSingle()
-          if (found?.id) targetId = found.id
-        }
         const { error } = await supabase
           .from('resort_facilities')
           .update(payload)
-          .eq('id', targetId)
+          .eq('id', editingFacility.id)
         if (error) throw error
         showToast('تم تحديث بيانات وصور القسم بنجاح ✅')
       } else {
@@ -4138,8 +4102,28 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
         </div>
       </div>
 
-      {/* Facilities Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      {/* Facilities Cards Grid or Empty State */}
+      {facilities.length === 0 ? (
+        <div className="card p-12 text-center border-dashed border-white/10 space-y-4">
+          <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto text-3xl">
+            🏡
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-lg font-bold text-white">لا توجد أقسام أو مرافق مضافة حالياً</h3>
+            <p className="text-xs text-gray-400 max-w-md mx-auto leading-relaxed">
+              تم حذف كافة الأقسام بنجاح ولا تظهر أي مرافق وهمية للزوار. يمكنك البدء بإضافة أقسام ومرافق جديدة للمنتجع بالضغط على الزر أدناه.
+            </p>
+          </div>
+          <button
+            onClick={openCreateModal}
+            className="btn-primary py-2.5 px-5 text-xs font-bold inline-flex items-center gap-2"
+          >
+            <Plus size={16} />
+            <span>إضافة أول قسم الآن</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {facilities.map((f, index) => {
           const tags = Array.isArray(f.features) ? f.features : []
           return (
@@ -4289,6 +4273,7 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
           )
         })}
       </div>
+      )}
 
       {/* Edit / Create Facility Modal */}
       {showModal && (
@@ -4516,22 +4501,23 @@ const FacilitiesAdminTab: React.FC<FacilitiesAdminTabProps> = ({ facilities, onR
 // ─────────────────────────────────────────────
 // MAIN ADMIN PAGE
 // ─────────────────────────────────────────────
-type Tab = 'overview' | 'cms' | 'media' | 'facilities' | 'bookings' | 'pending' | 'properties' | 'addons' | 'water' | 'ledger' | 'settings'
+type Tab = 'overview' | 'cms' | 'media' | 'facilities' | 'furniture' | 'bookings' | 'pending' | 'properties' | 'addons' | 'water' | 'ledger' | 'settings'
 
 const AdminPage: React.FC = () => {
   const { profile, user, loading: authLoading } = useAuth()
+  const { refreshSettings } = useSettings()
   const navigate = useNavigate()
 
   // ─── ACCESS CONTROL ───
-  // Only allow admin with phone 0556854162
-  const isAdmin = profile?.role === 'admin' && isAdminPhone(profile?.phone)
+  // Allow any user with role 'admin' or matching admin phone
+  const isAdmin = profile?.role === 'admin' || isAdminPhone(profile?.phone)
 
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [showManualBookingModal, setShowManualBookingModal] = useState(false)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [waterOrders, setWaterOrders] = useState<WaterOrder[]>([])
-  const [waterSizes, setWaterSizes] = useState<WaterTankerSize[]>(DEFAULT_WATER_SIZES)
-  const [facilities, setFacilities] = useState<Facility[]>(DEFAULT_FACILITIES)
+  const [waterSizes, setWaterSizes] = useState<WaterTankerSize[]>([])
+  const [facilities, setFacilities] = useState<Facility[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [properties, setProperties] = useState<Property[]>([])
   const [addons, setAddons] = useState<Addon[]>([])
@@ -4585,10 +4571,8 @@ const AdminPage: React.FC = () => {
     if (p) setProperties(p)
     if (a) setAddons(a)
     if (wo) setWaterOrders(wo as any)
-    if (ws && ws.length > 0) setWaterSizes(ws as any)
-    else setWaterSizes(DEFAULT_WATER_SIZES)
-    if (fac && fac.length > 0) setFacilities(fac as any)
-    else setFacilities(DEFAULT_FACILITIES)
+    setWaterSizes((ws as any) || [])
+    setFacilities((fac as any) || [])
     setLoading(false)
   }, [user, isAdmin])
 
@@ -4597,6 +4581,73 @@ const AdminPage: React.FC = () => {
       fetchAll()
     }
   }, [fetchAll, user, isAdmin])
+
+  // Gentle Web Audio API synthesizer chime for realtime alerts (zero assets needed)
+  const playNotificationSound = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+      if (!AudioCtx) return
+      const ctx = new AudioCtx()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime) // D5
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12) // A5
+      gain.gain.setValueAtTime(0.2, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.35)
+    } catch (_) {}
+  }, [])
+
+  // Send desktop notification if tab is in background
+  const sendDesktopNotification = useCallback((title: string, body: string) => {
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, {
+          body,
+          icon: '/favicon.ico',
+        })
+      }
+    } catch (_) {}
+  }, [])
+
+  // Request notification permission once on admin mount
+  useEffect(() => {
+    if (user && isAdmin && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
+  }, [user, isAdmin])
+
+  // Real-time synchronization for new bookings & water orders
+  useEffect(() => {
+    if (!user || !isAdmin) return
+    const channel = supabase
+      .channel('admin-realtime-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, (payload) => {
+        fetchAll()
+        if (payload.eventType === 'INSERT') {
+          playNotificationSound()
+          showToast('🔔 حجز جديد وصل إلى النظام للتو!', 'success')
+          sendDesktopNotification('منتجع وبستان خالد العمدة', '🔔 وصل حجز جديد للتو، يرجى مراجعته.')
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'water_orders' }, (payload) => {
+        fetchAll()
+        if (payload.eventType === 'INSERT') {
+          playNotificationSound()
+          showToast('💧 طلب وايت ماء جديد وصل للتو!', 'success')
+          sendDesktopNotification('خدمة وايت ماء حلو', '💧 وصل طلب وايت ماء جديد للتو.')
+        }
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user, isAdmin, fetchAll, playNotificationSound, sendDesktopNotification])
 
   // Execute confirmation
   const handleExecuteConfirm = async (booking: Booking) => {
@@ -4691,8 +4742,13 @@ const AdminPage: React.FC = () => {
   }
 
   const handleSaveSettings = async (s: Settings) => {
-    await supabase.from('resort_settings').update(s).eq('id', 1)
+    const { error } = await supabase.from('resort_settings').update(s).eq('id', 1)
+    if (error) {
+      showToast('⚠️ تعذر حفظ إعدادات المنتجع: ' + error.message, 'error')
+      return
+    }
     setSettings(s)
+    await refreshSettings()
     showToast('تم حفظ إعدادات المنتجع بنجاح ✓', 'success')
   }
 
@@ -4701,9 +4757,15 @@ const AdminPage: React.FC = () => {
   const pendingVerification = useMemo(() => bookings.filter(b => b.status === 'pending_verification'), [bookings])
   const allPending = useMemo(() => bookings.filter(b => b.status === 'pending_verification' || b.status === 'pending_receipt'), [bookings])
   const confirmed = useMemo(() => bookings.filter(b => b.status === 'confirmed'), [bookings])
-  const totalRevenue = useMemo(() => bookings
+  // Total contract booking value for confirmed & completed bookings
+  const totalBookingValue = useMemo(() => bookings
     .filter(b => b.status === 'confirmed' || b.status === 'completed')
-    .reduce((sum, b) => sum + b.deposit_amount, 0), [bookings])
+    .reduce((sum, b) => sum + (b.total_amount || 0), 0), [bookings])
+
+  // Total collected deposits
+  const totalDepositsCollected = useMemo(() => bookings
+    .filter(b => b.status === 'confirmed' || b.status === 'completed')
+    .reduce((sum, b) => sum + (b.deposit_amount || 0), 0), [bookings])
 
   // Filtered pending list based on chip
   const displayedPending = useMemo(() => {
@@ -4776,6 +4838,7 @@ const AdminPage: React.FC = () => {
   const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview', label: 'نظرة عامة', icon: <BarChart3 size={16} /> },
     { id: 'facilities', label: 'أقسام ومرافق المنتجع 🏡', icon: <Sparkles size={16} className="text-amber-400" /> },
+    { id: 'furniture', label: 'كراسي وأثاث تراثي 🪑', icon: <Armchair size={16} className="text-amber-400" /> },
     { id: 'cms', label: 'واجهة الموقع والصور 🖼️', icon: <ImageIcon size={16} className="text-emerald-400" /> },
     { id: 'media', label: 'مكتبة الوسائط 📂', icon: <Palmtree size={16} className="text-teal-400" /> },
     { id: 'bookings', label: 'جميع الحجوزات', icon: <CalendarCheck size={16} /> },
@@ -4859,7 +4922,13 @@ const AdminPage: React.FC = () => {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <MetricCard icon={<Banknote size={20} />} label="إجمالي الإيرادات" value={formatCurrency(totalRevenue)} sub="من العربونات المؤكدة" color="emerald" />
+              <MetricCard
+                icon={<Banknote size={20} />}
+                label="إجمالي قيمة الحجوزات"
+                value={formatCurrency(totalBookingValue)}
+                sub={`عربونات محصلة: ${formatCurrency(totalDepositsCollected)}`}
+                color="emerald"
+              />
               <MetricCard icon={<CalendarCheck size={20} />} label="حجوزات مؤكدة" value={confirmed.length} color="blue" />
               <MetricCard icon={<Clock size={20} />} label="بانتظار الإجراء" value={allPending.length} sub={`${pendingVerification.length} مراجعة • ${pendingReceipt.length} إيصال`} color="amber" />
               <MetricCard icon={<Users size={20} />} label="إجمالي الحجوزات" value={bookings.length} color="purple" />
@@ -5266,6 +5335,10 @@ const AdminPage: React.FC = () => {
             onRefresh={fetchAll}
             showToast={showToast}
           />
+        )}
+
+        {activeTab === 'furniture' && (
+          <HeritageFurnitureAdminTab showToast={showToast} />
         )}
 
         {activeTab === 'cms' && (

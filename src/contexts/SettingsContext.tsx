@@ -70,11 +70,17 @@ export const useSettings = () => useContext(SettingsContext)
 
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<ResortSettings>(() => {
-    // Try local storage cache for instant rendering
+    // Try local storage cache for instant rendering with 1-hour TTL
     try {
-      const cached = localStorage.getItem(SETTINGS_STORAGE_KEY)
-      if (cached) {
-        return { ...DEFAULT_RESORT_SETTINGS, ...JSON.parse(cached) }
+      const raw = localStorage.getItem(SETTINGS_STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        // Check if cached payload has timestamp and is newer than 1 hour (3600000 ms)
+        const isFresh = parsed.timestamp && (Date.now() - parsed.timestamp < 3600000)
+        const cachedData = parsed.data || parsed
+        if (isFresh || !parsed.timestamp) {
+          return { ...DEFAULT_RESORT_SETTINGS, ...cachedData }
+        }
       }
     } catch (_) {}
     return DEFAULT_RESORT_SETTINGS
@@ -93,22 +99,22 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const merged: ResortSettings = {
           ...DEFAULT_RESORT_SETTINGS,
           ...data,
-          // Guarantee values exist even if columns are empty or null
-          hero_image_url: data.hero_image_url || DEFAULT_RESORT_SETTINGS.hero_image_url,
-          hero_title: data.hero_title || DEFAULT_RESORT_SETTINGS.hero_title,
-          hero_subtitle: data.hero_subtitle || DEFAULT_RESORT_SETTINGS.hero_subtitle,
-          hero_badge: data.hero_badge || DEFAULT_RESORT_SETTINGS.hero_badge,
-          stats_events: data.stats_events || DEFAULT_RESORT_SETTINGS.stats_events,
-          stats_clients: data.stats_clients || DEFAULT_RESORT_SETTINGS.stats_clients,
-          stats_days: data.stats_days || DEFAULT_RESORT_SETTINGS.stats_days,
+          // Guarantee values exist without overriding user-cleared empty strings
+          hero_image_url: data.hero_image_url ?? DEFAULT_RESORT_SETTINGS.hero_image_url,
+          hero_title: data.hero_title ?? DEFAULT_RESORT_SETTINGS.hero_title,
+          hero_subtitle: data.hero_subtitle ?? DEFAULT_RESORT_SETTINGS.hero_subtitle,
+          hero_badge: data.hero_badge ?? DEFAULT_RESORT_SETTINGS.hero_badge,
+          stats_events: data.stats_events ?? DEFAULT_RESORT_SETTINGS.stats_events,
+          stats_clients: data.stats_clients ?? DEFAULT_RESORT_SETTINGS.stats_clients,
+          stats_days: data.stats_days ?? DEFAULT_RESORT_SETTINGS.stats_days,
           show_hero_stats: data.show_hero_stats !== undefined ? Boolean(data.show_hero_stats) : true,
-          location_address: data.location_address || DEFAULT_RESORT_SETTINGS.location_address,
-          water_contact_phone: data.water_contact_phone || data.contact_phone || DEFAULT_RESORT_SETTINGS.water_contact_phone,
-          water_contact_whatsapp: data.water_contact_whatsapp || data.contact_whatsapp || DEFAULT_RESORT_SETTINGS.water_contact_whatsapp,
+          location_address: data.location_address ?? DEFAULT_RESORT_SETTINGS.location_address,
+          water_contact_phone: data.water_contact_phone ?? data.contact_phone ?? DEFAULT_RESORT_SETTINGS.water_contact_phone,
+          water_contact_whatsapp: data.water_contact_whatsapp ?? data.contact_whatsapp ?? DEFAULT_RESORT_SETTINGS.water_contact_whatsapp,
         }
         setSettings(merged)
         try {
-          localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(merged))
+          localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ data: merged, timestamp: Date.now() }))
         } catch (_) {}
       }
     } catch (err) {
@@ -132,7 +138,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Optimistic update
     setSettings(updated)
     try {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated))
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ data: updated, timestamp: Date.now() }))
     } catch (_) {}
 
     try {

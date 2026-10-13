@@ -74,10 +74,26 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       const nextDayStr = checkOutDate.toISOString().slice(0, 10)
       const checkOutISO = `${nextDayStr}T${checkOutTime}:00Z`
 
+      const clean = customerPhone.replace(/[^0-9]/g, '')
+      const normalizedPhone = clean.startsWith('966') ? '0' + clean.slice(3) : clean
+
+      let matchedCustomerId: string | null = null
+      try {
+        const { data: matchedProfile } = await supabase
+          .from('profiles')
+          .select('id')
+          .or(`phone.eq.${normalizedPhone},phone.eq.${clean}`)
+          .maybeSingle()
+        if (matchedProfile) {
+          matchedCustomerId = matchedProfile.id
+        }
+      } catch (_) {}
+
       const payload = {
         property_id: propertyId,
+        customer_id: matchedCustomerId,
         customer_name: customerName.trim(),
-        customer_phone: customerPhone.trim(),
+        customer_phone: normalizedPhone,
         booking_date: bookingDate,
         check_in: checkInISO,
         check_out: checkOutISO,

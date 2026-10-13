@@ -2,12 +2,26 @@
 -- منتجع وبستان خالد العمدة للاستثمار — ملف الإعداد الشامل المتكامل للقاعدة
 -- COMPLETE ALL-IN-ONE SUPABASE SQL SETUP SCRIPT
 -- ==============================================================================
--- هذا الملف مجمع بالكامل، يمكنك نسخه ولصقه في Supabase SQL Editor وتشغيله دفعة واحدة
--- آمن تماماً للتشغيل المتكرر (Idempotent): لا يحذف بياناتك السابقة ويضمن إضافة كل الجداول والأعمدة
+-- هذا الملف مجمع وشامل لكل أقسام النظام وجداوله وصلاحياته حتى الآن:
+-- 1. إعدادات المنتجع وهوية الواجهة والهيرو (resort_settings)
+-- 2. المستخدمين وصلاحيات المسؤول 0556854162 وحمايتها (profiles)
+-- 3. استراحات ووحدات المنتجع والصور المتعددة (properties)
+-- 4. الخدمات والإضافات ومخزون السكوترات (addons)
+-- 5. الحجوزات وإضافات الحجز وفهارس التقويم الذكية (bookings & booking_addons)
+-- 6. أسطول وايت ماء حلو وطلبات التوصيل (water_tanker_sizes & water_orders)
+-- 7. دفتر الحسابات والمصروفات والرحلات اليدوية (water_expenses & water_manual_trips)
+-- 8. إدارة أقسام ومرافق المنتجع CMS (resort_facilities)
+-- 9. متجر ومعرض كراسي وأثاث الخيزران التراثي (heritage_furniture)
+-- 10. مخازن التخزين السحابية وسياساتها (receipts & resort-media)
+-- 11. دوال الأمان والحذف التلقائي والإلغاء الذكي (Functions & Triggers)
+-- 12. تفعيل التحديث اللحظي (Supabase Realtime)
+--
+-- آمن 100% للتشغيل المتكرر (Idempotent): لا يحذف بياناتك ولا يرمي أخطاء!
 -- ==============================================================================
 
--- تفعيل ملحقات UUID
+-- تفعيل الملحقات الأساسية
 create extension if not exists "uuid-ossp";
+create extension if not exists "pgcrypto";
 
 -- ─────────────────────────────────────────────────────────────
 -- 1. جدول إعدادات المنتجع وواجهة الهيرو (resort_settings)
@@ -26,7 +40,7 @@ create table if not exists public.resort_settings (
   constraint single_row_check check (id = 1)
 );
 
--- التأكد من وجود أعمدة الواجهة والـ CMS والإحصائيات
+-- التأكد من وجود كافة أعمدة الـ CMS والواجهة والإحصائيات
 alter table public.resort_settings
   add column if not exists hero_image_url text default 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=2000&q=80',
   add column if not exists hero_title text default 'منتجع وبستان خالد العمدة',
@@ -59,6 +73,17 @@ create table if not exists public.profiles (
   created_at timestamptz default now()
 );
 
+-- دالة فحص صلاحية المسؤول بدون حدوث تكرار لا نهائي في RLS
+create or replace function public.is_admin()
+returns boolean as $$
+begin
+  return exists (
+    select 1 from public.profiles
+    where id = auth.uid() and (role = 'admin' or phone = '0556854162')
+  );
+end;
+$$ language plpgsql security definer;
+
 -- دالة تلقائية لربط الحساب الجديد وتعيين 0556854162 كمسؤول
 create or replace function public.handle_new_user()
 returns trigger as $$
@@ -88,31 +113,32 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- إنشاء مشغل المستخدمين الجدد بأمان دون إغلاق جدول auth.users
-do $$
-begin
-  if not exists (
-    select 1 from pg_trigger where tgname = 'on_auth_user_created'
-  ) then
-    create trigger on_auth_user_created
-      after insert on auth.users
-      for each row execute procedure public.handle_new_user();
-  end if;
-end $$;
+-- إنشاء مشغل المستخدمين الجدد بأمان
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
 
 -- ترقية حساب المسؤول 0556854162 فوراً إن وجد
 update public.profiles set role = 'admin' where phone = '0556854162';
 
--- دالة فحص صلاحية المسؤول بدون حدوث تكرار لا نهائي في RLS
-create or replace function public.is_admin()
-returns boolean as $$
+-- دالة حماية تمنع العميل العادي من تعديل صلاحياته أو رفع الحظر عن نفسه
+create or replace function public.protect_profile_fields()
+returns trigger as $$
 begin
-  return exists (
-    select 1 from public.profiles
-    where id = auth.uid() and (role = 'admin' or phone = '0556854162')
-  );
+  if not public.is_admin() then
+    new.role := old.role;
+    new.is_flagged := old.is_flagged;
+    new.is_blacklisted := old.is_blacklisted;
+  end if;
+  return new;
 end;
 $$ language plpgsql security definer;
+
+drop trigger if exists trg_protect_profile_fields on public.profiles;
+create trigger trg_protect_profile_fields
+  before update on public.profiles
+  for each row execute procedure public.protect_profile_fields();
 
 -- ─────────────────────────────────────────────────────────────
 -- 3. جدول الوحدات والاستراحات ودعم الصور المتعددة (properties)
@@ -132,7 +158,6 @@ create table if not exists public.properties (
   created_at timestamptz default now()
 );
 
--- التأكد من وجود أعمدة الصور
 alter table public.properties
   add column if not exists images text[] default '{}',
   add column if not exists cover_image text;
@@ -151,7 +176,7 @@ select
 where not exists (select 1 from public.properties where name = 'المنتجع الكامل');
 
 -- ─────────────────────────────────────────────────────────────
--- 4. جدول الإضافات والخدمات ودعم صور المعاينة (addons)
+-- 4. جدول الإضافات والخدمات وصور المعاينة (addons)
 -- ─────────────────────────────────────────────────────────────
 create table if not exists public.addons (
   id uuid primary key default gen_random_uuid(),
@@ -178,7 +203,6 @@ select
   'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=600&q=80'
 where not exists (select 1 from public.addons where name = 'سكوتر كهربائي');
 
--- تحديث صورة السكوتر إن كانت فارغة
 update public.addons
 set image_url = 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=600&q=80'
 where name like '%سكوتر%' and (image_url is null or image_url = '');
@@ -209,9 +233,11 @@ create table if not exists public.bookings (
   )),
   cancellation_reason text,
   cancelled_at timestamptz,
-  created_at timestamptz default now(),
-  constraint unique_property_date unique (property_id, booking_date)
+  created_at timestamptz default now()
 );
+
+-- إزالة القيد القديم الصارم إن وجد لاستبداله بالفهرس المشروط الذكي
+alter table public.bookings drop constraint if exists unique_property_date;
 
 create table if not exists public.booking_addons (
   id uuid primary key default gen_random_uuid(),
@@ -245,22 +271,17 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- دالة إلغاء الحجوزات المعلقة تلقائياً بعد ساعتين إذا لم يتم رفع الإيصال
+-- دالة إلغاء الحجوزات المعلقة تلقائياً بعد ساعتين إذا لم يتم رفع الإيصال (تستثني الدفع عند الوصول)
 create or replace function public.expire_pending_bookings()
 returns void as $$
 begin
   update public.bookings
   set status = 'expired'
   where status = 'pending_receipt'
+    and coalesce(payment_method, 'bank_transfer') = 'bank_transfer'
     and created_at <= (now() - interval '2 hours');
 end;
 $$ language plpgsql security definer;
-
--- فهارس تحسين سرعة الاستعلامات والأداء
-create index if not exists idx_bookings_date on public.bookings(booking_date);
-create index if not exists idx_bookings_status on public.bookings(status);
-create index if not exists idx_water_orders_status on public.water_orders(status);
-create index if not exists idx_water_expenses_date on public.water_expenses(expense_date);
 
 -- ─────────────────────────────────────────────────────────────
 -- 6. خدمة طلب وايت ماء حلو (water_tanker_sizes & water_orders)
@@ -322,7 +343,7 @@ create table if not exists public.water_manual_trips (
 );
 
 -- ─────────────────────────────────────────────────────────────
--- 8. جدول مرافق المنتجع (resort_facilities)
+-- 8. جدول مرافق وأقسام المنتجع (resort_facilities)
 -- ─────────────────────────────────────────────────────────────
 create table if not exists public.resort_facilities (
   id uuid primary key default gen_random_uuid(),
@@ -339,10 +360,7 @@ create table if not exists public.resort_facilities (
   created_at timestamptz default now()
 );
 
--- تفعيل حماية RLS لمرافق وأقسام المنتجع
-alter table public.resort_facilities enable row level security;
-
--- إضافة مرافق وأقسام المنتجع الأساسية إن لم تكن موجودة
+-- إضافة مرافق المنتجع الأساسية إن لم تكن مسجلة
 insert into public.resort_facilities (title, subtitle, badge_text, description, image_url, features, privacy_note, display_order)
 select
   'مسبح متدرج وألعاب مائية عائلية (Aqua Park)',
@@ -416,7 +434,75 @@ select
 where not exists (select 1 from public.resort_facilities where title like '%جناح الماستر%');
 
 -- ─────────────────────────────────────────────────────────────
--- 9. مساحات التخزين السحابية (Storage Buckets: resort-media & receipts)
+-- 9. جدول معرض ومتجر الكراسي والأثاث التراثي (heritage_furniture)
+-- ─────────────────────────────────────────────────────────────
+create table if not exists public.heritage_furniture (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  category text default 'كراسي',
+  description text not null,
+  price numeric not null,
+  discount_price numeric,
+  image_url text not null,
+  images text[] default '{}',
+  features text[] default '{}',
+  in_stock boolean default true,
+  stock_quantity integer default 10,
+  display_order integer default 0,
+  is_active boolean default true,
+  created_at timestamptz default now()
+);
+
+-- إدراج المنتج التراثي الأساسي إن لم يكن موجوداً
+insert into public.heritage_furniture (
+  name,
+  category,
+  description,
+  price,
+  discount_price,
+  image_url,
+  features,
+  in_stock,
+  stock_quantity,
+  display_order,
+  is_active
+)
+select
+  'طقم كراسي خيزران تراثي ريفي (4 كراسي)',
+  'كراسي',
+  'طقم كراسي تراثية فاخرة مصنوعة يدوياً بحرفية عالية من الخيزران والخشب الطبيعي المتين، مع مساند أذرع مريحة ومقاعد قماشية أنيقة باللون الأزرق والأبيض. مصممة لتضفي رونقاً تراثياً أصيلاً على حدائق المزارع، الاستراحات، والبيوت الريفية.',
+  850,
+  750,
+  '/images/heritage-chair.jpg',
+  array['صناعة يدوية عالية المتانة', 'خيزران وخشب طبيعي معالج', 'وسائد قماشية كلاسيكية مريحة', 'مناسب للمزارع والحدائق الخارجية', 'خفيف الوزن وسهل النقل والتخزين'],
+  true,
+  8,
+  1,
+  true
+where not exists (select 1 from public.heritage_furniture where name like '%طقم كراسي خيزران%');
+
+-- ─────────────────────────────────────────────────────────────
+-- 10. فهارس تحسين الأداء ومنع التعارض (Indexes)
+-- ─────────────────────────────────────────────────────────────
+create index if not exists idx_bookings_date on public.bookings(booking_date);
+create index if not exists idx_bookings_status on public.bookings(status);
+create index if not exists idx_bookings_customer_id on public.bookings(customer_id);
+create index if not exists idx_bookings_customer_phone on public.bookings(customer_phone);
+
+-- فهرس فريد ذكي يمنع حجز نفس التاريخ فقط إذا كان الحجز نشطاً (ويسمح بحجزه إن كان ملغياً أو منتهياً)
+create unique index if not exists unique_active_booking 
+on public.bookings(property_id, booking_date) 
+where status not in ('cancelled', 'expired');
+
+create index if not exists idx_water_orders_status on public.water_orders(status);
+create index if not exists idx_water_orders_customer_id on public.water_orders(customer_id);
+create index if not exists idx_water_orders_customer_phone on public.water_orders(customer_phone);
+create index if not exists idx_water_orders_created_at on public.water_orders(created_at desc);
+create index if not exists idx_water_expenses_date on public.water_expenses(expense_date);
+create index if not exists idx_heritage_order on public.heritage_furniture(display_order);
+
+-- ─────────────────────────────────────────────────────────────
+-- 11. مساحات التخزين السحابية (Storage Buckets: resort-media & receipts)
 -- ─────────────────────────────────────────────────────────────
 insert into storage.buckets (id, name, public)
 values 
@@ -439,14 +525,18 @@ create policy "Anyone can read receipts" on storage.objects
   for select using (bucket_id = 'receipts');
 
 drop policy if exists "Authenticated users can upload receipts" on storage.objects;
-create policy "Authenticated users can upload receipts" on storage.objects
+drop policy if exists "Anyone can upload receipts" on storage.objects;
+create policy "Anyone can upload receipts" on storage.objects
   for insert with check (bucket_id = 'receipts');
 
--- ─────────────────────────────────────────────────────────────
--- 10. سياسات الأمان وحماية البيانات (Row Level Security - RLS)
--- ─────────────────────────────────────────────────────────────
+drop policy if exists "Users update own receipts" on storage.objects;
+drop policy if exists "Admin manage receipts" on storage.objects;
+create policy "Admin manage receipts" on storage.objects
+  for all using (bucket_id = 'receipts');
 
--- تفعيل الـ RLS على كافة الجداول
+-- ─────────────────────────────────────────────────────────────
+-- 12. سياسات الأمان وحماية البيانات (Row Level Security - RLS)
+-- ─────────────────────────────────────────────────────────────
 alter table public.resort_settings enable row level security;
 alter table public.profiles enable row level security;
 alter table public.properties enable row level security;
@@ -458,6 +548,7 @@ alter table public.water_orders enable row level security;
 alter table public.water_expenses enable row level security;
 alter table public.water_manual_trips enable row level security;
 alter table public.resort_facilities enable row level security;
+alter table public.heritage_furniture enable row level security;
 
 -- resort_settings
 drop policy if exists "Public read settings" on public.resort_settings;
@@ -492,13 +583,22 @@ create policy "Admin manage addons" on public.addons for all using (public.is_ad
 
 -- bookings
 drop policy if exists "Users read own bookings" on public.bookings;
-create policy "Users read own bookings" on public.bookings for select using (customer_id = auth.uid() or public.is_admin());
+drop policy if exists "Anyone read bookings" on public.bookings;
+create policy "Anyone read bookings" on public.bookings for select using (true);
 
 drop policy if exists "Users insert own bookings" on public.bookings;
+drop policy if exists "Users insert booking" on public.bookings;
 create policy "Users insert own bookings" on public.bookings for insert with check (true);
 
+drop policy if exists "Users update own booking" on public.bookings;
 drop policy if exists "Admin manage bookings" on public.bookings;
-create policy "Admin manage bookings" on public.bookings for all using (public.is_admin());
+create policy "Users update own booking" on public.bookings
+  for update using (
+    (auth.uid() is not null and customer_id = auth.uid()) or public.is_admin()
+  );
+
+drop policy if exists "Admin delete booking" on public.bookings;
+create policy "Admin delete booking" on public.bookings for delete using (public.is_admin());
 
 -- booking_addons
 drop policy if exists "Anyone read booking addons" on public.booking_addons;
@@ -519,7 +619,11 @@ drop policy if exists "Anyone can insert water orders" on public.water_orders;
 create policy "Anyone can insert water orders" on public.water_orders for insert with check (true);
 
 drop policy if exists "Customers read own water orders" on public.water_orders;
-create policy "Customers read own water orders" on public.water_orders for select using (customer_id = auth.uid() or public.is_admin());
+create policy "Customers read own water orders" on public.water_orders for select using (
+  (auth.uid() is not null and customer_id = auth.uid())
+  or customer_phone in (select phone from public.profiles where id = auth.uid())
+  or public.is_admin()
+);
 
 drop policy if exists "Admin manage water orders" on public.water_orders;
 create policy "Admin manage water orders" on public.water_orders for all using (public.is_admin());
@@ -540,8 +644,43 @@ drop policy if exists "Admin manage facilities" on public.resort_facilities;
 drop policy if exists "Admin manage resort_facilities" on public.resort_facilities;
 create policy "Admin manage facilities" on public.resort_facilities for all using (public.is_admin());
 
+-- heritage_furniture
+drop policy if exists "Public read active heritage furniture" on public.heritage_furniture;
+drop policy if exists "Public can view active heritage furniture" on public.heritage_furniture;
+create policy "Public read active heritage furniture" on public.heritage_furniture for select using (is_active = true or public.is_admin());
+
+drop policy if exists "Admin manage heritage furniture" on public.heritage_furniture;
+create policy "Admin manage heritage furniture" on public.heritage_furniture for all using (public.is_admin());
+
+-- ─────────────────────────────────────────────────────────────
+-- 13. تفعيل التحديث اللحظي (Supabase Realtime) بأمان
+-- ─────────────────────────────────────────────────────────────
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.bookings;
+  exception when others then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.water_orders;
+  exception when others then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.resort_settings;
+  exception when others then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.resort_facilities;
+  exception when others then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.heritage_furniture;
+  exception when others then null;
+  end;
+end $$;
+
 -- ─────────────────────────────────────────────────────────────
 -- تم الانتهاء بنجاح ✅
 -- ─────────────────────────────────────────────────────────────
 select 
-  'تهانينا! تم تحديث وتأسيس كافة جداول وسياسات ومخازن قاعدة البيانات وصلاحيات المسؤول 0556854162 بنجاح.' as result;
+  'تهانينا! تم تحديث وتأسيس كافة الـ 12 جدولاً وسياسات الأمان والمخازن السحابية وصلاحيات المسؤول 0556854162 بنجاح.' as result;

@@ -112,7 +112,7 @@ const QUICK_AMENITIES = [
 ]
 
 export const Facilities: React.FC = () => {
-  const [facilities, setFacilities] = useState<Facility[]>(DEFAULT_FACILITIES)
+  const [facilities, setFacilities] = useState<Facility[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -124,13 +124,13 @@ export const Facilities: React.FC = () => {
           .eq('is_active', true)
           .order('display_order', { ascending: true })
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           setFacilities(data as Facility[])
-        } else {
-          setFacilities(DEFAULT_FACILITIES)
+        } else if (error) {
+          console.warn('Could not fetch resort facilities:', error.message)
         }
       } catch (err) {
-        setFacilities(DEFAULT_FACILITIES)
+        console.warn('Resort facilities fetch notice:', err)
       } finally {
         setLoading(false)
       }
@@ -138,6 +138,11 @@ export const Facilities: React.FC = () => {
 
     fetchFacilities()
   }, [])
+
+  // If loading or if all facilities were deleted/hidden by admin, hide the section gracefully
+  if (loading || facilities.length === 0) {
+    return null
+  }
 
   // Bento column span mapping pattern: 2, 1, 1, 2, 1, 2
   const getColSpan = (index: number) => {

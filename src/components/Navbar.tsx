@@ -3,13 +3,13 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
   Menu, X, User, LogOut, CalendarCheck, Home,
-  Settings, ChevronDown, Shield, Droplets
+  Settings, ChevronDown, Shield, Droplets, Armchair
 } from 'lucide-react'
 import AuthModal from './AuthModal'
 import ErrorBoundary from './ErrorBoundary'
 
 const Navbar: React.FC = () => {
-  const { user, profile, signOut } = useAuth()
+  const { user, profile, isAdmin, signOut } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -66,11 +66,12 @@ const Navbar: React.FC = () => {
           <div className="hidden md:flex items-center gap-1">
             <NavLink to="/" label="الرئيسية" icon={<Home size={15} />} active={isActive('/')} />
             <NavLink to="/book" label="احجز الآن" icon={<CalendarCheck size={15} />} active={isActive('/book')} />
+            <NavLink to="/furniture" label="كراسي تراثية 🪑" icon={<Armchair size={15} className="text-amber-400" />} active={isActive('/furniture')} />
             <NavLink to="/water" label="وايت ماء حلو 💧" icon={<Droplets size={15} className="text-teal-400" />} active={isActive('/water')} />
             {user && (
               <NavLink to="/my-bookings" label="حجوزاتي" icon={<CalendarCheck size={15} />} active={isActive('/my-bookings')} />
             )}
-            {profile?.role === 'admin' && (
+            {isAdmin && (
               <NavLink to="/admin" label="لوحة التحكم" icon={<Shield size={15} />} active={isActive('/admin')} />
             )}
           </div>
@@ -132,7 +133,7 @@ const Navbar: React.FC = () => {
                         <CalendarCheck size={17} className="text-emerald-400" />
                         حجوزاتي
                       </Link>
-                      {profile?.role === 'admin' && (
+                      {isAdmin && (
                         <Link
                           to="/admin"
                           className="flex items-center gap-3 px-4 min-h-[48px] text-sm text-amber-400 hover:bg-white/8 transition-colors"
@@ -206,9 +207,10 @@ const Navbar: React.FC = () => {
             <div className="p-4 space-y-1">
               <MobileNavLink to="/" label="الرئيسية" icon={<Home size={17} />} onClick={() => setMenuOpen(false)} active={isActive('/')} />
               <MobileNavLink to="/book" label="احجز الآن" icon={<CalendarCheck size={17} />} onClick={() => setMenuOpen(false)} active={isActive('/book')} />
+              <MobileNavLink to="/furniture" label="كراسي وأثاث تراثي 🪑" icon={<Armchair size={17} className="text-amber-400" />} onClick={() => setMenuOpen(false)} active={isActive('/furniture')} />
               <MobileNavLink to="/water" label="وايت ماء حلو 💧" icon={<Droplets size={17} className="text-teal-400" />} onClick={() => setMenuOpen(false)} active={isActive('/water')} />
               {user && <MobileNavLink to="/my-bookings" label="حجوزاتي" icon={<CalendarCheck size={17} />} onClick={() => setMenuOpen(false)} active={isActive('/my-bookings')} />}
-              {profile?.role === 'admin' && (
+              {isAdmin && (
                 <MobileNavLink to="/admin" label="لوحة التحكم" icon={<Shield size={17} className="text-amber-400" />} onClick={() => setMenuOpen(false)} active={isActive('/admin')} />
               )}
             </div>

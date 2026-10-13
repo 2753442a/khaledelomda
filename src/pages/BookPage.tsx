@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { useSettings } from '../contexts/SettingsContext'
 import BookingCalendar from '../components/BookingCalendar'
 import AuthModal from '../components/AuthModal'
 import {
@@ -13,18 +14,9 @@ import { compressReceiptImage, formatFileSize } from '../lib/imageCompression'
 import {
   Zap, Plus, Minus, Upload, Check, MessageCircle,
   ChevronDown, ChevronUp, AlertTriangle, Loader2, X, Info, LogIn,
-  Eye, Image as ImageIcon, ChevronLeft, ChevronRight, Camera
+  Eye, Image as ImageIcon, ChevronLeft, ChevronRight, Camera, Copy, CheckCheck
 } from 'lucide-react'
 import { format, addDays } from 'date-fns'
-
-interface Settings {
-  deposit_percentage: number
-  default_check_in_time: string
-  default_check_out_time: string
-  bank_name: string
-  bank_account_name: string
-  bank_iban: string
-}
 
 interface Property {
   id: string
@@ -57,9 +49,9 @@ interface AddonSelection {
 
 const BookPage: React.FC = () => {
   const { user, profile } = useAuth()
+  const { settings } = useSettings()
   const navigate = useNavigate()
 
-  const [settings, setSettings] = useState<Settings | null>(null)
   const [properties, setProperties] = useState<Property[]>([])
   const [addons, setAddons] = useState<Addon[]>([])
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null)
@@ -73,21 +65,24 @@ const BookPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [bookingId, setBookingId] = useState<string | null>(null)
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const step = useMemo<1 | 2 | 3>(() => {
+    if (selectedProperty && selectedDate) return 3
+    if (selectedProperty) return 2
+    return 1
+  }, [selectedProperty, selectedDate])
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [galleryProperty, setGalleryProperty] = useState<Property | null>(null)
   const [galleryIndex, setGalleryIndex] = useState(0)
   const [previewAddon, setPreviewAddon] = useState<Addon | null>(null)
+  const [copiedIban, setCopiedIban] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: s }, { data: p }, { data: a }] = await Promise.all([
-        supabase.from('resort_settings').select('*').eq('id', 1).single(),
+      const [{ data: p }, { data: a }] = await Promise.all([
         supabase.from('properties').select('*').eq('is_active', true).order('name'),
         supabase.from('addons').select('*').eq('is_active', true),
       ])
-      if (s) setSettings(s)
       if (p) { setProperties(p); if (p.length === 1) setSelectedProperty(p[0]) }
       if (a) setAddons(a)
     }
@@ -185,10 +180,30 @@ const BookPage: React.FC = () => {
     checkOutDt.setHours(coh, com, 0, 0)
 
     try {
-      // 1. Create booking
+      const newBookingId = crypto.randomUUID()
+      let receiptUrl: string | null = null
+
+      // 1. Upload receipt first if bank transfer
+      if (paymentMethod === 'bank_transfer' && receiptFile) {
+        const path = `${newBookingId}/receipt.webp`
+        const { error: uploadErr } = await supabase.storage
+          .from('receipts')
+          .upload(path, receiptFile, { contentType: 'image/webp', upsert: true })
+
+        if (!uploadErr) {
+          receiptUrl = path
+        }
+      }
+
+      const initialStatus = paymentMethod === 'bank_transfer'
+        ? (receiptUrl ? 'pending_verification' : 'pending_receipt')
+        : 'pending_verification'
+
+      // 2. Create booking atomically with correct status and receipt url
       const { data: booking, error: bookingErr } = await supabase
         .from('bookings')
         .insert({
+          id: newBookingId,
           property_id: selectedProperty.id,
           customer_id: user.id,
           customer_name: profile.full_name,
@@ -199,7 +214,8 @@ const BookPage: React.FC = () => {
           total_amount: totalAmount,
           deposit_amount: depositAmount,
           payment_method: paymentMethod,
-          status: paymentMethod === 'bank_transfer' ? 'pending_receipt' : 'pending_receipt',
+          payment_receipt_url: receiptUrl,
+          status: initialStatus,
         })
         .select()
         .single()
@@ -214,11 +230,11 @@ const BookPage: React.FC = () => {
         return
       }
 
-      // 2. Insert addon bookings
+      // 3. Insert addon bookings
       const addonRows = Object.values(addonSelections)
         .filter(s => s.quantity > 0)
         .map(s => ({
-          booking_id: booking.id,
+          booking_id: newBookingId,
           addon_id: s.addon.id,
           quantity: s.quantity,
           unit_price: s.addon.price,
@@ -228,24 +244,7 @@ const BookPage: React.FC = () => {
         await supabase.from('booking_addons').insert(addonRows)
       }
 
-      // 3. Upload receipt if bank transfer
-      let receiptUrl: string | null = null
-      if (paymentMethod === 'bank_transfer' && receiptFile) {
-        const path = `${booking.id}/receipt.webp`
-        const { error: uploadErr } = await supabase.storage
-          .from('receipts')
-          .upload(path, receiptFile, { contentType: 'image/webp', upsert: true })
-
-        if (!uploadErr) {
-          receiptUrl = path
-          await supabase
-            .from('bookings')
-            .update({ payment_receipt_url: path, status: 'pending_verification' })
-            .eq('id', booking.id)
-        }
-      }
-
-      setBookingId(booking.id)
+      setBookingId(newBookingId)
       setSuccess(true)
     } catch (err: any) {
       setError(err.message ?? 'حدث خطأ، حاول مرة أخرى')
@@ -314,7 +313,7 @@ const BookPage: React.FC = () => {
               </div>
             </div>
             <a
-              href={generateWhatsAppLink('0547382222', waMsg)}
+              href={generateWhatsAppLink(settings?.contact_whatsapp || '0547382222', waMsg)}
               target="_blank"
               rel="noopener noreferrer"
               className="btn-gold w-full mb-3"
@@ -341,18 +340,35 @@ const BookPage: React.FC = () => {
         </div>
 
         {/* Step Indicator */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          {[1, 2, 3].map(s => (
-            <div key={s} className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
-                step === s ? 'bg-emerald-500 text-white' :
-                step > s ? 'bg-emerald-500/30 text-emerald-400' :
-                'bg-white/10 text-gray-500'
-              }`}>
-                {step > s ? <Check size={14} /> : s}
+        <div className="flex items-center justify-center gap-3 sm:gap-6 mb-8">
+          {[
+            { num: 1, label: 'اختيار الوحدة' },
+            { num: 2, label: 'التاريخ والخدمات' },
+            { num: 3, label: 'التأكيد والدفع' },
+          ].map((s, idx) => (
+            <React.Fragment key={s.num}>
+              <div className="flex items-center gap-2">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold transition-all shadow-md ${
+                  step === s.num
+                    ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-emerald-500/30 ring-2 ring-emerald-400/50 scale-105'
+                    : step > s.num
+                    ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/40'
+                    : 'bg-white/5 border border-white/10 text-gray-500'
+                }`}>
+                  {step > s.num ? <Check size={14} className="stroke-[3]" /> : s.num}
+                </div>
+                <span className={`text-xs font-semibold hidden sm:inline transition-colors ${
+                  step === s.num ? 'text-white' : step > s.num ? 'text-emerald-400' : 'text-gray-500'
+                }`}>
+                  {s.label}
+                </span>
               </div>
-              {s < 3 && <div className={`w-8 h-0.5 ${step > s ? 'bg-emerald-500' : 'bg-white/10'}`} />}
-            </div>
+              {idx < 2 && (
+                <div className={`w-6 sm:w-12 h-0.5 rounded-full transition-colors ${
+                  step > s.num ? 'bg-emerald-500' : 'bg-white/10'
+                }`} />
+              )}
+            </React.Fragment>
           ))}
         </div>
 
@@ -591,10 +607,26 @@ const BookPage: React.FC = () => {
                       <p className="font-semibold text-white">تحويل بنكي</p>
                       <p className="text-sm text-gray-400">حول العربون وارفع الإيصال</p>
                       {paymentMethod === 'bank_transfer' && (
-                        <div className="mt-3 p-3 rounded-lg bg-white/5 text-sm space-y-1">
+                        <div className="mt-3 p-3.5 rounded-xl bg-slate-900/90 border border-emerald-500/30 text-xs sm:text-sm space-y-2">
                           <p className="text-gray-300">🏦 البنك: <span className="text-white font-medium">{settings.bank_name}</span></p>
                           <p className="text-gray-300">👤 المستفيد: <span className="text-white font-medium">{settings.bank_account_name}</span></p>
-                          <p className="text-gray-300 font-mono" dir="ltr">IBAN: {settings.bank_iban}</p>
+                          <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-black/40 border border-white/10">
+                            <span className="text-amber-300 font-mono text-xs sm:text-sm" dir="ltr">{settings.bank_iban}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                navigator.clipboard.writeText(settings.bank_iban)
+                                setCopiedIban(true)
+                                setTimeout(() => setCopiedIban(false), 2500)
+                              }}
+                              className="px-2.5 py-1 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1 transition-colors"
+                            >
+                              {copiedIban ? <CheckCheck size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                              <span>{copiedIban ? 'تم النسخ' : 'نسخ الآيبان'}</span>
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
