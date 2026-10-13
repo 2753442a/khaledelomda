@@ -266,7 +266,7 @@ export const FloatingContactHelp: React.FC = () => {
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <h4 className="text-sm font-black text-white">خالد العمدة (أبو خالد)</h4>
+                  <h4 className="text-sm font-black text-white">منتجع وبستان خالد العمدة</h4>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
                     المالك
                   </span>
